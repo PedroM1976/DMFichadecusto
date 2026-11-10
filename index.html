@@ -322,9 +322,7 @@
         <p class="subtitle">Venda, compra e custos organizados por fases</p>
       </div>
       <div class="actions">
-        <span id="syncStatus" class="sync-status">Modo local</span>
-        <button id="connectSupabase" type="button">Ligar ao Supabase</button>
-        <button id="disconnectSupabase" type="button" hidden>Terminar sessão</button>
+        <span id="syncStatus" class="sync-status online">Supabase ligado</span>
         <button class="primary" id="addRow" type="button">Adicionar envio</button>
         <button id="exportCsv" type="button">Exportar CSV</button>
       </div>
@@ -488,32 +486,6 @@
     </form>
   </dialog>
 
-  <dialog id="loginDialog">
-    <form id="loginForm">
-      <div class="dialog-head">
-        <h2>Ligar ao Supabase</h2>
-        <p>Entre com um utilizador autorizado para partilhar os envios entre postos.</p>
-      </div>
-      <div class="dialog-body">
-        <div class="login-fields">
-          <div class="login-field">
-            <label for="loginEmail">Email</label>
-            <input id="loginEmail" type="email" autocomplete="username" required>
-          </div>
-          <div class="login-field">
-            <label for="loginPassword">Palavra-passe</label>
-            <input id="loginPassword" type="password" autocomplete="current-password" required>
-          </div>
-        </div>
-        <p id="loginError" class="login-error" role="alert"></p>
-        <div class="dialog-actions">
-          <button id="cancelLogin" type="button">Cancelar</button>
-          <button class="primary" type="submit">Entrar e sincronizar</button>
-        </div>
-      </div>
-    </form>
-  </dialog>
-
   <script src="dm-logo.js"></script>
   <script>
     'use strict';
@@ -524,15 +496,13 @@
     const SUPABASE_URL = 'https://lyihzeddgfbzmuqwrjya.supabase.co';
     const SUPABASE_PUBLISHABLE_KEY = 'sb_publishable_sBVSviRAaAi_l92aszt9xg_Q76yHSZC';
     const STORAGE_KEY = 'dm_folha_custos_envios_v2';
-    const SESSION_KEY = 'dm_supabase_session_v1';
     const money = new Intl.NumberFormat('pt-PT', { style: 'currency', currency: 'EUR' });
     const percent = new Intl.NumberFormat('pt-PT', { style: 'percent', minimumFractionDigits: 1, maximumFractionDigits: 1 });
     const fields = ['date', 'invoice', 'destination', 'description', 'carrier', 'sales', 'productCost', 'freight', 'labor', 'travel', 'operations', 'commissionRate', 'otherCosts', 'notes'];
     const costEditor = document.getElementById('costEditor');
-    const loginDialog = document.getElementById('loginDialog');
     const costInputs = ['editLabor', 'editTravel', 'editOperations', 'editCommission', 'editOtherCosts'];
     const syncTimers = new Map();
-    let cloudSession = loadSession();
+    const cloudSession = { access_token: SUPABASE_PUBLISHABLE_KEY };
     let editingCostId = null;
     const example = {
       id: crypto.randomUUID(), date: '', invoice: '', destination: '', description: 'Máquina', carrier: '',
@@ -549,20 +519,6 @@
       } catch { return []; }
     }
 
-    function loadSession() {
-      try {
-        const saved = JSON.parse(localStorage.getItem(SESSION_KEY) || 'null');
-        return saved?.access_token ? saved : null;
-      } catch { return null; }
-    }
-
-    function saveSession(session) {
-      cloudSession = session;
-      if (session) localStorage.setItem(SESSION_KEY, JSON.stringify(session));
-      else localStorage.removeItem(SESSION_KEY);
-      updateConnectionUi();
-    }
-
     function saveEntries(entryToSync = null) {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(entries));
       if (cloudSession && entryToSync) scheduleRemoteSave(entryToSync);
@@ -570,11 +526,8 @@
 
     function updateConnectionUi(message = '') {
       const status = document.getElementById('syncStatus');
-      const connected = Boolean(cloudSession);
-      status.className = `sync-status${connected ? ' online' : ''}`;
-      status.textContent = message || (connected ? `Ligado: ${cloudSession.user?.email || 'Supabase'}` : 'Modo local');
-      document.getElementById('connectSupabase').hidden = connected;
-      document.getElementById('disconnectSupabase').hidden = !connected;
+      status.className = 'sync-status online';
+      status.textContent = message || 'Supabase ligado';
     }
 
     function showSyncError(message) {
@@ -583,28 +536,11 @@
       status.textContent = message;
     }
 
-    async function authRequest(path, body) {
-      const response = await fetch(`${SUPABASE_URL}/auth/v1/${path}`, {
-        method: 'POST',
-        headers: { apikey: SUPABASE_PUBLISHABLE_KEY, 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      });
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(data.msg || data.message || data.error_description || 'Não foi possível autenticar.');
-      if (data.access_token) data.expires_at_ms = Date.now() + number(data.expires_in || 3600) * 1000;
-      return data;
-    }
-
     async function ensureSession() {
-      if (!cloudSession) throw new Error('É necessário iniciar sessão.');
-      if (!cloudSession.expires_at_ms || cloudSession.expires_at_ms < Date.now() + 60000) {
-        const refreshed = await authRequest('token?grant_type=refresh_token', { refresh_token: cloudSession.refresh_token });
-        saveSession(refreshed);
-      }
       return cloudSession;
     }
 
-    async function dbRequest(path, options = {}, retry = true) {
+    async function dbRequest(path, options = {}) {
       const session = await ensureSession();
       const response = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
         ...options,
@@ -615,11 +551,6 @@
           ...(options.headers || {}),
         },
       });
-      if (response.status === 401 && retry && session.refresh_token) {
-        session.expires_at_ms = 0;
-        await ensureSession();
-        return dbRequest(path, options, false);
-      }
       const text = await response.text();
       const data = text ? JSON.parse(text) : null;
       if (!response.ok) {
@@ -1039,69 +970,15 @@
       URL.revokeObjectURL(url);
     }
 
-    async function signInToSupabase(email, password) {
-      const session = await authRequest('token?grant_type=password', { email, password });
-      saveSession(session);
-      await loadRemoteEntries();
-    }
-
     async function initializeCloud() {
       updateConnectionUi();
-      if (!cloudSession) return;
       try {
         await loadRemoteEntries();
       } catch (error) {
         console.error(error);
-        saveSession(null);
-        showSyncError('Sessão expirada; volte a entrar');
+        showSyncError('Execute o SQL atualizado no Supabase');
       }
     }
-
-    document.getElementById('connectSupabase').addEventListener('click', () => {
-      document.getElementById('loginError').textContent = '';
-      loginDialog.showModal();
-      document.getElementById('loginEmail').focus();
-    });
-
-    document.getElementById('cancelLogin').addEventListener('click', () => loginDialog.close());
-
-    document.getElementById('loginForm').addEventListener('submit', async event => {
-      event.preventDefault();
-      const errorElement = document.getElementById('loginError');
-      const submit = event.submitter;
-      errorElement.textContent = '';
-      if (submit) submit.disabled = true;
-      try {
-        await signInToSupabase(
-          document.getElementById('loginEmail').value.trim(),
-          document.getElementById('loginPassword').value
-        );
-        document.getElementById('loginPassword').value = '';
-        loginDialog.close();
-      } catch (error) {
-        errorElement.textContent = error.message || 'Não foi possível entrar.';
-      } finally {
-        if (submit) submit.disabled = false;
-      }
-    });
-
-    document.getElementById('disconnectSupabase').addEventListener('click', async () => {
-      try {
-        if (cloudSession?.access_token) {
-          await fetch(`${SUPABASE_URL}/auth/v1/logout`, {
-            method: 'POST',
-            headers: {
-              apikey: SUPABASE_PUBLISHABLE_KEY,
-              Authorization: `Bearer ${cloudSession.access_token}`,
-            },
-          });
-        }
-      } catch (error) {
-        console.error(error);
-      }
-      saveSession(null);
-      updateConnectionUi('Modo local');
-    });
 
     document.getElementById('addRow').addEventListener('click', () => {
       const entry = blankEntry();
