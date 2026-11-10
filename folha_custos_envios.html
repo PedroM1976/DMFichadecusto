@@ -1,0 +1,1120 @@
+<!doctype html>
+<html lang="pt">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Folha de custos de envios</title>
+  <style>
+    :root {
+      --black: #171717;
+      --gold: #c69214;
+      --gold-soft: #fff5d7;
+      --gray: #f2f3f5;
+      --line: #d9dde3;
+      --blue: #0868ac;
+      --red: #b42318;
+      --green: #18794e;
+      --shadow: 0 18px 50px rgba(17, 24, 39, .10);
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      color: var(--black);
+      background: linear-gradient(135deg, #f6f7f9 0%, #fffaf0 100%);
+      font: 14px/1.45 Inter, Aptos, Arial, sans-serif;
+    }
+
+    .page {
+      width: min(1680px, calc(100% - 32px));
+      margin: 24px auto;
+      padding: 28px;
+      background: white;
+      border: 1px solid #eceef1;
+      border-radius: 22px;
+      box-shadow: var(--shadow);
+    }
+
+    header {
+      display: grid;
+      grid-template-columns: minmax(210px, 280px) 1fr auto;
+      gap: 28px;
+      align-items: center;
+      padding-bottom: 22px;
+      border-bottom: 3px solid var(--gold);
+    }
+
+    .logo {
+      width: 100%;
+      max-height: 110px;
+      object-fit: contain;
+      object-position: left center;
+    }
+
+    h1 { margin: 0 0 6px; font-size: clamp(24px, 3vw, 38px); line-height: 1.15; }
+    .subtitle { margin: 0; color: #667085; font-size: 15px; }
+
+    .actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 9px; }
+    .sync-status {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      padding: 9px 11px;
+      color: #667085;
+      background: #f2f4f7;
+      border-radius: 10px;
+      font-size: 12px;
+      font-weight: 800;
+    }
+    .sync-status::before { content: ''; width: 9px; height: 9px; background: #98a2b3; border-radius: 50%; }
+    .sync-status.online { color: #18794e; background: #e8f7ef; }
+    .sync-status.online::before { background: #25a66a; }
+    .sync-status.error { color: #b42318; background: #fff0ee; }
+    .sync-status.error::before { background: #d92d20; }
+    [hidden] { display: none !important; }
+    button {
+      border: 1px solid #cfd4dc;
+      border-radius: 10px;
+      padding: 10px 14px;
+      color: #253044;
+      background: white;
+      font: inherit;
+      font-weight: 700;
+      cursor: pointer;
+      transition: transform .15s ease, box-shadow .15s ease, border-color .15s ease;
+    }
+    button:hover { transform: translateY(-1px); border-color: var(--gold); box-shadow: 0 6px 18px rgba(0,0,0,.08); }
+    button.primary { color: white; background: var(--black); border-color: var(--black); }
+
+    .summary {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+      gap: 12px;
+      margin: 22px 0;
+    }
+    .card {
+      min-height: 92px;
+      padding: 14px 16px;
+      background: #fffaf0;
+      border: 1px solid #ead79e;
+      border-radius: 14px;
+    }
+    .card .label { color: #6b6250; font-size: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: .04em; }
+    .card .value { margin-top: 9px; font-size: 22px; font-weight: 850; letter-spacing: -.02em; }
+    .card.margin .value { color: var(--green); }
+
+    .hint {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      margin: 10px 0 12px;
+      color: #667085;
+      font-size: 13px;
+    }
+    .legend { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+    .legend span { display: inline-flex; align-items: center; gap: 7px; }
+    .dot { width: 13px; height: 13px; border-radius: 4px; border: 1px solid var(--line); }
+    .dot.input { background: var(--gold-soft); }
+    .dot.calc { background: var(--gray); }
+
+    .table-wrap { overflow: auto; border: 1px solid var(--line); border-radius: 14px; }
+    table { width: 100%; min-width: 2600px; border-collapse: separate; border-spacing: 0; }
+    th {
+      position: sticky;
+      top: 0;
+      z-index: 2;
+      padding: 12px 10px;
+      color: white;
+      background: var(--black);
+      border-right: 1px solid #4a4a4a;
+      text-align: center;
+      font-size: 12px;
+      white-space: normal;
+    }
+    th:last-child { border-right: 0; }
+    th.phase {
+      padding: 8px 10px;
+      color: var(--black);
+      background: #e8b93f;
+      border-color: #c69214;
+      font-size: 11px;
+      letter-spacing: .03em;
+      text-transform: uppercase;
+    }
+    th.phase.identification { color: white; background: #4b5565; border-color: #667085; }
+    th.phase.operational { background: #f3d683; }
+    th.phase.other { background: #f6e8bc; }
+    th.phase.result { color: white; background: #8b6810; border-color: #ad841c; }
+    td { padding: 0; border-right: 1px solid var(--line); border-top: 1px solid var(--line); vertical-align: middle; }
+    td:last-child { border-right: 0; }
+    td.input { background: var(--gold-soft); }
+    td.calc { padding: 11px 10px; background: var(--gray); text-align: right; font-variant-numeric: tabular-nums; font-weight: 700; white-space: nowrap; }
+    td.remove { width: 44px; padding: 6px; background: white; text-align: center; }
+
+    input {
+      width: 100%;
+      min-width: 110px;
+      border: 0;
+      outline: 0;
+      padding: 11px 10px;
+      color: var(--blue);
+      background: transparent;
+      font: inherit;
+    }
+    input:focus { box-shadow: inset 0 0 0 2px var(--gold); background: white; }
+    input[type="number"], input.numeric { text-align: right; font-variant-numeric: tabular-nums; }
+    input[type="number"], input.numeric { appearance: textfield; -moz-appearance: textfield; }
+    input[type="number"]::-webkit-inner-spin-button,
+    input[type="number"]::-webkit-outer-spin-button { margin: 0; appearance: none; -webkit-appearance: none; }
+    input.wide { min-width: 170px; }
+    .delete { width: 32px; height: 32px; padding: 0; color: var(--red); border-color: #f1c7c3; font-size: 18px; line-height: 1; }
+    .quick-edit {
+      min-width: 120px;
+      padding: 8px 10px;
+      color: white;
+      background: #8b6810;
+      border-color: #8b6810;
+      white-space: nowrap;
+    }
+    .print-row {
+      min-width: 112px;
+      padding: 8px 10px;
+      color: #253044;
+      background: white;
+      border-color: #b9c0cb;
+      white-space: nowrap;
+    }
+
+    #printSheet { display: none; }
+    .print-document { color: #171717; font-family: Aptos, Arial, sans-serif; }
+    .print-header { display: grid; grid-template-columns: 190px 1fr; gap: 24px; align-items: center; padding-bottom: 12px; border-bottom: 3px solid var(--gold); }
+    .print-logo { width: 180px; max-height: 82px; object-fit: contain; object-position: left center; }
+    .print-header h1 { margin: 0 0 5px; font-size: 25px; }
+    .print-header p { margin: 0; color: #667085; }
+    .print-meta { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px 18px; margin: 16px 0; }
+    .print-item { padding: 9px 11px; background: #f7f7f7; border-left: 3px solid #b7bcc5; border-radius: 4px; }
+    .print-item small { display: block; margin-bottom: 3px; color: #667085; font-size: 10px; font-weight: 800; text-transform: uppercase; }
+    .print-item strong { font-size: 13px; }
+    .print-phase { margin-top: 11px; border: 1px solid #d9dde3; border-radius: 8px; overflow: hidden; }
+    .print-phase h2 { margin: 0; padding: 7px 11px; color: #171717; background: #e8b93f; font-size: 13px; }
+    .print-values { display: grid; grid-template-columns: repeat(3, 1fr); }
+    .print-value { padding: 9px 11px; border-right: 1px solid #e4e7ec; }
+    .print-value:last-child { border-right: 0; }
+    .print-value span { display: block; margin-bottom: 2px; color: #667085; font-size: 10px; }
+    .print-value b { font-size: 14px; }
+    .print-results { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 13px; }
+    .print-result { padding: 11px; color: white; background: #292929; border-radius: 7px; }
+    .print-result.highlight { background: #8b6810; }
+    .print-result span { display: block; margin-bottom: 4px; color: #e4e7ec; font-size: 10px; text-transform: uppercase; }
+    .print-result b { font-size: 16px; }
+    .print-notes { min-height: 58px; margin-top: 12px; padding: 10px 12px; border: 1px solid #d9dde3; border-radius: 7px; }
+    .print-notes small { display: block; margin-bottom: 4px; color: #667085; font-weight: 800; text-transform: uppercase; }
+
+    dialog {
+      width: min(560px, calc(100% - 28px));
+      padding: 0;
+      color: var(--black);
+      background: white;
+      border: 0;
+      border-radius: 18px;
+      box-shadow: 0 28px 80px rgba(0, 0, 0, .28);
+    }
+    dialog::backdrop { background: rgba(17, 17, 17, .58); backdrop-filter: blur(3px); }
+    .dialog-head { padding: 20px 22px 16px; color: white; background: var(--black); border-bottom: 3px solid var(--gold); }
+    .dialog-head h2 { margin: 0 0 4px; font-size: 22px; }
+    .dialog-head p { margin: 0; color: #d0d5dd; }
+    .dialog-body { padding: 22px; }
+    .cost-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    .cost-field label { display: block; margin-bottom: 7px; font-weight: 800; }
+    .cost-field .currency-input, .cost-field .percent-input { position: relative; }
+    .cost-field .currency-input::after {
+      content: '€';
+      position: absolute;
+      top: 50%;
+      right: 15px;
+      transform: translateY(-50%);
+      color: #667085;
+      font-weight: 800;
+      pointer-events: none;
+    }
+    .cost-field .percent-input::after {
+      content: '%';
+      position: absolute;
+      top: 50%;
+      right: 15px;
+      transform: translateY(-50%);
+      color: #667085;
+      font-weight: 800;
+      pointer-events: none;
+    }
+    .cost-field input {
+      min-width: 0;
+      padding: 15px 38px 15px 14px;
+      color: var(--black);
+      background: var(--gold-soft);
+      border: 2px solid #e3c56a;
+      border-radius: 11px;
+      font-size: 19px;
+      font-weight: 800;
+      text-align: right;
+    }
+    .cost-total {
+      display: flex;
+      justify-content: space-between;
+      gap: 18px;
+      margin-top: 18px;
+      padding: 14px 16px;
+      background: var(--gray);
+      border-radius: 11px;
+      font-size: 16px;
+      font-weight: 800;
+    }
+    .dialog-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px; }
+    .login-fields { display: grid; gap: 15px; }
+    .login-field label { display: block; margin-bottom: 6px; font-weight: 800; }
+    .login-field input { padding: 13px 14px; color: var(--black); background: white; border: 2px solid #d0d5dd; border-radius: 10px; font-size: 16px; }
+    .login-error { min-height: 20px; margin: 10px 0 0; color: var(--red); font-weight: 700; }
+
+    .empty { color: #98a2b3; font-weight: 500; }
+    .negative { color: var(--red) !important; }
+    footer { margin-top: 13px; color: #7b8190; font-size: 12px; }
+
+    @media (max-width: 1100px) {
+      header { grid-template-columns: 220px 1fr; }
+      .actions { grid-column: 1 / -1; justify-content: flex-start; }
+      .summary { grid-template-columns: repeat(3, minmax(150px, 1fr)); }
+    }
+    @media (max-width: 680px) {
+      .page { width: 100%; margin: 0; padding: 18px 12px; border-radius: 0; }
+      header { grid-template-columns: 1fr; gap: 14px; }
+      .logo { max-width: 250px; }
+      .summary { grid-template-columns: repeat(2, minmax(130px, 1fr)); }
+      .hint { align-items: flex-start; flex-direction: column; }
+      .cost-fields { grid-template-columns: 1fr; }
+    }
+
+    @media print {
+      @page { size: A4 portrait; margin: 11mm; }
+      body { background: white; }
+      .page { width: 100%; margin: 0; padding: 0; border: 0; box-shadow: none; }
+      .actions, .delete, th:last-child, td.remove, .hint button { display: none !important; }
+      .summary { grid-template-columns: repeat(4, 1fr); }
+      .table-wrap { overflow: visible; border: 0; }
+      table { min-width: 0; font-size: 9px; }
+      input { padding: 5px 3px; font-size: 9px; }
+      td.calc, th { padding: 6px 4px; }
+      body.print-single .page { display: none !important; }
+      body.print-single #printSheet { display: block !important; }
+      body.print-single { min-height: 0; }
+      .print-document { width: 188mm; max-height: 275mm; overflow: hidden; }
+    }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <header>
+      <img id="brandLogo" class="logo" alt="Domingos & Morgado">
+      <div>
+        <h1>Folha de custos de envios de cargas</h1>
+        <p class="subtitle">Venda, compra e custos organizados por fases</p>
+      </div>
+      <div class="actions">
+        <span id="syncStatus" class="sync-status">Modo local</span>
+        <button id="connectSupabase" type="button">Ligar ao Supabase</button>
+        <button id="disconnectSupabase" type="button" hidden>Terminar sessão</button>
+        <button class="primary" id="addRow" type="button">Adicionar envio</button>
+        <button id="exportCsv" type="button">Exportar CSV</button>
+      </div>
+    </header>
+
+    <section class="summary" aria-label="Resumo">
+      <article class="card"><div class="label">Total de envios</div><div class="value" id="sumCount">0</div></article>
+      <article class="card"><div class="label">Valor faturado</div><div class="value" id="sumSales">€0,00</div></article>
+      <article class="card"><div class="label">Custo dos produtos</div><div class="value" id="sumProductCost">€0,00</div></article>
+      <article class="card"><div class="label">Total transporte</div><div class="value" id="sumFreight">€0,00</div></article>
+      <article class="card"><div class="label">Custos operacionais</div><div class="value" id="sumOperational">€0,00</div></article>
+      <article class="card"><div class="label">Comissões</div><div class="value" id="sumCommission">€0,00</div></article>
+      <article class="card"><div class="label">Outros custos</div><div class="value" id="sumOtherCosts">€0,00</div></article>
+      <article class="card"><div class="label">Custo total</div><div class="value" id="sumTotalCost">€0,00</div></article>
+      <article class="card margin"><div class="label">Margem</div><div class="value" id="sumMargin">€0,00</div></article>
+    </section>
+
+    <div class="hint">
+      <div class="legend">
+        <span><i class="dot input"></i> Campos a preencher</span>
+        <span><i class="dot calc"></i> Cálculos automáticos</span>
+      </div>
+      <span>Os dados ficam guardados automaticamente neste navegador.</span>
+    </div>
+
+    <div class="table-wrap">
+      <table aria-label="Custos dos envios">
+        <thead>
+          <tr>
+            <th class="phase identification" colspan="4">Identificação</th>
+            <th class="phase" colspan="4">Fase 1 — Venda e compra</th>
+            <th class="phase operational" colspan="3">Fase 2 — Custos operacionais</th>
+            <th class="phase" colspan="1">Fase 3 — Comissão</th>
+            <th class="phase other" colspan="1">Fase 4 — Outros custos</th>
+            <th class="phase result" colspan="8">Resultado</th>
+            <th class="phase identification" colspan="4">Registo</th>
+          </tr>
+          <tr>
+            <th>Data</th>
+            <th>N.º da fatura</th>
+            <th>Cliente / destino</th>
+            <th>Descrição da carga</th>
+            <th>Transportadora</th>
+            <th>PV / valor de venda</th>
+            <th>Preço de compra</th>
+            <th>Transporte</th>
+            <th>Mão de obra</th>
+            <th>Deslocação</th>
+            <th>Outros custos operacionais</th>
+            <th>Comissão do vendedor (%)</th>
+            <th>Outros custos</th>
+            <th>Custo total</th>
+            <th>Transporte / PV</th>
+            <th>Mão de obra / PV</th>
+            <th>Deslocação / PV</th>
+            <th>Comissão / PV</th>
+            <th>Outros custos / PV</th>
+            <th>Margem</th>
+            <th>Margem %</th>
+            <th>Edição rápida</th>
+            <th>Impressão</th>
+            <th>Observações</th>
+            <th aria-label="Eliminar"></th>
+          </tr>
+        </thead>
+        <tbody id="rows"></tbody>
+      </table>
+    </div>
+    <footer>O custo total inclui preço de compra, transporte, mão de obra, deslocação, custos operacionais, comissão e outros custos. A margem é o PV menos o custo total.</footer>
+  </main>
+
+  <section id="printSheet" class="print-document" aria-hidden="true">
+    <div class="print-header">
+      <img id="printLogo" class="print-logo" alt="Domingos & Morgado">
+      <div><h1>Folha de custos do envio</h1><p>Detalhe de venda, compra, custos e margem</p></div>
+    </div>
+    <div class="print-meta">
+      <div class="print-item"><small>Data</small><strong id="pDate">—</strong></div>
+      <div class="print-item"><small>N.º da fatura</small><strong id="pInvoice">—</strong></div>
+      <div class="print-item"><small>Cliente / destino</small><strong id="pDestination">—</strong></div>
+      <div class="print-item"><small>Descrição</small><strong id="pDescription">—</strong></div>
+      <div class="print-item"><small>Transportadora</small><strong id="pCarrier">—</strong></div>
+    </div>
+    <div class="print-phase">
+      <h2>Fase 1 — Venda e compra</h2>
+      <div class="print-values">
+        <div class="print-value"><span>PV / valor de venda</span><b id="pSales">€0,00</b></div>
+        <div class="print-value"><span>Preço de compra</span><b id="pProductCost">€0,00</b></div>
+        <div class="print-value"><span>Transporte</span><b id="pFreight">€0,00</b></div>
+      </div>
+    </div>
+    <div class="print-phase">
+      <h2>Fase 2 — Custos operacionais</h2>
+      <div class="print-values">
+        <div class="print-value"><span>Mão de obra</span><b id="pLabor">€0,00</b></div>
+        <div class="print-value"><span>Deslocação</span><b id="pTravel">€0,00</b></div>
+        <div class="print-value"><span>Outros custos operacionais</span><b id="pOperations">€0,00</b></div>
+      </div>
+    </div>
+    <div class="print-phase">
+      <h2>Fase 3 — Comissão do vendedor</h2>
+      <div class="print-values">
+        <div class="print-value"><span>Percentagem</span><b id="pCommissionRate">0,0%</b></div>
+        <div class="print-value"><span>Valor da comissão</span><b id="pCommission">€0,00</b></div>
+      </div>
+    </div>
+    <div class="print-phase">
+      <h2>Fase 4 — Outros custos</h2>
+      <div class="print-values">
+        <div class="print-value"><span>Outros custos</span><b id="pOtherCosts">€0,00</b></div>
+      </div>
+    </div>
+    <div class="print-results">
+      <div class="print-result"><span>Custo total</span><b id="pTotalCost">€0,00</b></div>
+      <div class="print-result"><span>Transporte / PV</span><b id="pFreightPct">—</b></div>
+      <div class="print-result"><span>Mão de obra / PV</span><b id="pLaborPct">—</b></div>
+      <div class="print-result"><span>Deslocação / PV</span><b id="pTravelPct">—</b></div>
+      <div class="print-result"><span>Comissão / PV</span><b id="pCommissionPct">—</b></div>
+      <div class="print-result"><span>Outros custos / PV</span><b id="pOtherCostsPct">—</b></div>
+      <div class="print-result highlight"><span>Margem</span><b id="pMargin">€0,00</b></div>
+      <div class="print-result highlight"><span>Margem %</span><b id="pMarginPct">—</b></div>
+    </div>
+    <div class="print-notes"><small>Observações</small><div id="pNotes">—</div></div>
+  </section>
+
+  <dialog id="costEditor">
+    <form id="costForm" method="dialog">
+      <div class="dialog-head">
+        <h2>Editar custos</h2>
+        <p id="costEditorItem">Envio</p>
+      </div>
+      <div class="dialog-body">
+        <div class="cost-fields">
+          <div class="cost-field">
+            <label for="editLabor">Mão de obra</label>
+            <div class="currency-input"><input id="editLabor" class="numeric" type="text" inputmode="decimal"></div>
+          </div>
+          <div class="cost-field">
+            <label for="editTravel">Deslocação</label>
+            <div class="currency-input"><input id="editTravel" class="numeric" type="text" inputmode="decimal"></div>
+          </div>
+          <div class="cost-field">
+            <label for="editOperations">Outros custos operacionais</label>
+            <div class="currency-input"><input id="editOperations" class="numeric" type="text" inputmode="decimal"></div>
+          </div>
+          <div class="cost-field">
+            <label for="editCommission">Comissão do vendedor</label>
+            <div class="percent-input"><input id="editCommission" class="numeric" type="text" inputmode="decimal"></div>
+          </div>
+          <div class="cost-field">
+            <label for="editOtherCosts">Outros custos</label>
+            <div class="currency-input"><input id="editOtherCosts" class="numeric" type="text" inputmode="decimal"></div>
+          </div>
+        </div>
+        <div class="cost-total"><span>Total destes custos</span><span id="editCostsTotal">€0,00</span></div>
+        <div class="dialog-actions">
+          <button id="cancelCostEdit" type="button">Cancelar</button>
+          <button class="primary" type="submit">Guardar custos</button>
+        </div>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="loginDialog">
+    <form id="loginForm">
+      <div class="dialog-head">
+        <h2>Ligar ao Supabase</h2>
+        <p>Entre com um utilizador autorizado para partilhar os envios entre postos.</p>
+      </div>
+      <div class="dialog-body">
+        <div class="login-fields">
+          <div class="login-field">
+            <label for="loginEmail">Email</label>
+            <input id="loginEmail" type="email" autocomplete="username" required>
+          </div>
+          <div class="login-field">
+            <label for="loginPassword">Palavra-passe</label>
+            <input id="loginPassword" type="password" autocomplete="current-password" required>
+          </div>
+        </div>
+        <p id="loginError" class="login-error" role="alert"></p>
+        <div class="dialog-actions">
+          <button id="cancelLogin" type="button">Cancelar</button>
+          <button class="primary" type="submit">Entrar e sincronizar</button>
+        </div>
+      </div>
+    </form>
+  </dialog>
+
+  <script src="dm-logo.js"></script>
+  <script>
+    'use strict';
+
+    document.getElementById('brandLogo').src = LOGO_DM;
+    document.getElementById('printLogo').src = LOGO_DM;
+
+    const SUPABASE_URL = 'https://lyihzeddgfbzmuqwrjya.supabase.co';
+    const SUPABASE_PUBLISHABLE_KEY = 'sb_publishable_sBVSviRAaAi_l92aszt9xg_Q76yHSZC';
+    const STORAGE_KEY = 'dm_folha_custos_envios_v2';
+    const SESSION_KEY = 'dm_supabase_session_v1';
+    const money = new Intl.NumberFormat('pt-PT', { style: 'currency', currency: 'EUR' });
+    const percent = new Intl.NumberFormat('pt-PT', { style: 'percent', minimumFractionDigits: 1, maximumFractionDigits: 1 });
+    const fields = ['date', 'invoice', 'destination', 'description', 'carrier', 'sales', 'productCost', 'freight', 'labor', 'travel', 'operations', 'commissionRate', 'otherCosts', 'notes'];
+    const costEditor = document.getElementById('costEditor');
+    const loginDialog = document.getElementById('loginDialog');
+    const costInputs = ['editLabor', 'editTravel', 'editOperations', 'editCommission', 'editOtherCosts'];
+    const syncTimers = new Map();
+    let cloudSession = loadSession();
+    let editingCostId = null;
+    const example = {
+      id: crypto.randomUUID(), date: '', invoice: '', destination: '', description: 'Máquina', carrier: '',
+      sales: 4860, productCost: 3321, freight: 92.99, labor: '', travel: '', operations: '', commissionRate: '', otherCosts: '', notes: ''
+    };
+
+    let entries = loadEntries();
+    if (!entries.length) entries = [example];
+
+    function loadEntries() {
+      try {
+        const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
+        return Array.isArray(saved) ? saved : [];
+      } catch { return []; }
+    }
+
+    function loadSession() {
+      try {
+        const saved = JSON.parse(localStorage.getItem(SESSION_KEY) || 'null');
+        return saved?.access_token ? saved : null;
+      } catch { return null; }
+    }
+
+    function saveSession(session) {
+      cloudSession = session;
+      if (session) localStorage.setItem(SESSION_KEY, JSON.stringify(session));
+      else localStorage.removeItem(SESSION_KEY);
+      updateConnectionUi();
+    }
+
+    function saveEntries(entryToSync = null) {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(entries));
+      if (cloudSession && entryToSync) scheduleRemoteSave(entryToSync);
+    }
+
+    function updateConnectionUi(message = '') {
+      const status = document.getElementById('syncStatus');
+      const connected = Boolean(cloudSession);
+      status.className = `sync-status${connected ? ' online' : ''}`;
+      status.textContent = message || (connected ? `Ligado: ${cloudSession.user?.email || 'Supabase'}` : 'Modo local');
+      document.getElementById('connectSupabase').hidden = connected;
+      document.getElementById('disconnectSupabase').hidden = !connected;
+    }
+
+    function showSyncError(message) {
+      const status = document.getElementById('syncStatus');
+      status.className = 'sync-status error';
+      status.textContent = message;
+    }
+
+    async function authRequest(path, body) {
+      const response = await fetch(`${SUPABASE_URL}/auth/v1/${path}`, {
+        method: 'POST',
+        headers: { apikey: SUPABASE_PUBLISHABLE_KEY, 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.msg || data.message || data.error_description || 'Não foi possível autenticar.');
+      if (data.access_token) data.expires_at_ms = Date.now() + number(data.expires_in || 3600) * 1000;
+      return data;
+    }
+
+    async function ensureSession() {
+      if (!cloudSession) throw new Error('É necessário iniciar sessão.');
+      if (!cloudSession.expires_at_ms || cloudSession.expires_at_ms < Date.now() + 60000) {
+        const refreshed = await authRequest('token?grant_type=refresh_token', { refresh_token: cloudSession.refresh_token });
+        saveSession(refreshed);
+      }
+      return cloudSession;
+    }
+
+    async function dbRequest(path, options = {}, retry = true) {
+      const session = await ensureSession();
+      const response = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
+        ...options,
+        headers: {
+          apikey: SUPABASE_PUBLISHABLE_KEY,
+          Authorization: `Bearer ${session.access_token}`,
+          'Content-Type': 'application/json',
+          ...(options.headers || {}),
+        },
+      });
+      if (response.status === 401 && retry && session.refresh_token) {
+        session.expires_at_ms = 0;
+        await ensureSession();
+        return dbRequest(path, options, false);
+      }
+      const text = await response.text();
+      const data = text ? JSON.parse(text) : null;
+      if (!response.ok) {
+        const error = new Error(data?.message || data?.hint || `Erro Supabase (${response.status}).`);
+        error.status = response.status;
+        throw error;
+      }
+      return data;
+    }
+
+    function toDatabase(entry, includeId = false) {
+      const row = {
+        data_envio: entry.date || null,
+        numero_fatura: entry.invoice || null,
+        cliente_destino: entry.destination || null,
+        descricao_carga: entry.description || '',
+        transportadora: entry.carrier || null,
+        pv_venda: number(entry.sales),
+        preco_compra: number(entry.productCost),
+        custo_transporte: number(entry.freight),
+        custo_mao_obra: number(entry.labor),
+        custo_deslocacao: number(entry.travel),
+        outros_custos_operacionais: number(entry.operations),
+        comissao_vendedor_percentagem: number(entry.commissionRate),
+        outros_custos: number(entry.otherCosts),
+        observacoes: entry.notes || null,
+      };
+      if (includeId) row.id = entry.id;
+      return row;
+    }
+
+    function fromDatabase(row) {
+      return {
+        id: row.id,
+        date: row.data_envio || '',
+        invoice: row.numero_fatura || '',
+        destination: row.cliente_destino || '',
+        description: row.descricao_carga || '',
+        carrier: row.transportadora || '',
+        sales: row.pv_venda ?? '',
+        productCost: row.preco_compra ?? '',
+        freight: row.custo_transporte ?? '',
+        labor: row.custo_mao_obra ?? '',
+        travel: row.custo_deslocacao ?? '',
+        operations: row.outros_custos_operacionais ?? '',
+        commissionRate: row.comissao_vendedor_percentagem ?? '',
+        otherCosts: row.outros_custos ?? '',
+        notes: row.observacoes || '',
+        _remote: true,
+      };
+    }
+
+    function scheduleRemoteSave(entry) {
+      clearTimeout(syncTimers.get(entry.id));
+      updateConnectionUi('A guardar…');
+      syncTimers.set(entry.id, setTimeout(() => saveRemoteEntry(entry), 700));
+    }
+
+    async function saveRemoteEntry(entry) {
+      try {
+        if (entry._remote) {
+          await dbRequest(`custos_envios?id=eq.${encodeURIComponent(entry.id)}`, {
+            method: 'PATCH',
+            body: JSON.stringify(toDatabase(entry)),
+          });
+        } else {
+          try {
+            await dbRequest('custos_envios', {
+              method: 'POST',
+              headers: { Prefer: 'return=minimal' },
+              body: JSON.stringify(toDatabase(entry, true)),
+            });
+          } catch (error) {
+            if (error.status !== 409) throw error;
+            await dbRequest(`custos_envios?id=eq.${encodeURIComponent(entry.id)}`, {
+              method: 'PATCH',
+              body: JSON.stringify(toDatabase(entry)),
+            });
+          }
+          entry._remote = true;
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(entries));
+        }
+        updateConnectionUi('Sincronizado');
+      } catch (error) {
+        showSyncError('Guardado localmente; falhou a sincronização');
+        console.error(error);
+      }
+    }
+
+    async function deleteRemoteEntry(entry) {
+      if (!cloudSession || !entry._remote) return true;
+      try {
+        await dbRequest(`custos_envios?id=eq.${encodeURIComponent(entry.id)}`, { method: 'DELETE' });
+        updateConnectionUi('Sincronizado');
+        return true;
+      } catch (error) {
+        showSyncError('Não foi possível eliminar no Supabase');
+        console.error(error);
+        return false;
+      }
+    }
+
+    async function loadRemoteEntries() {
+      updateConnectionUi('A sincronizar…');
+      const rows = await dbRequest('custos_envios?select=*&order=criado_em.desc', { method: 'GET' });
+      if (rows.length) {
+        entries = rows.map(fromDatabase);
+      } else {
+        const localRows = entries.filter(entry => fields.some(field => String(entry[field] ?? '').trim() !== ''));
+        if (localRows.length) {
+          for (const entry of localRows) await saveRemoteEntry(entry);
+          entries = localRows;
+        } else {
+          entries = [blankEntry()];
+        }
+      }
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(entries));
+      render();
+      updateConnectionUi('Sincronizado');
+    }
+
+    function number(value) {
+      let text = String(value ?? '').trim().replaceAll(' ', '');
+      if (text.includes(',')) text = text.replaceAll('.', '').replace(',', '.');
+      const parsed = Number(text);
+      return Number.isFinite(parsed) ? parsed : 0;
+    }
+
+    function calculate(entry) {
+      const sales = number(entry.sales);
+      const productCost = number(entry.productCost);
+      const freight = number(entry.freight);
+      const labor = number(entry.labor);
+      const travel = number(entry.travel);
+      const operations = number(entry.operations);
+      const commissionRate = number(entry.commissionRate) / 100;
+      const commission = sales * commissionRate;
+      const otherCosts = number(entry.otherCosts);
+      const operationalTotal = labor + travel + operations;
+      const totalCost = productCost + freight + operationalTotal + commission + otherCosts;
+      const margin = sales - totalCost;
+      return {
+        sales, productCost, freight, labor, travel, operations, operationalTotal, commissionRate, commission, otherCosts, totalCost, margin,
+        freightPct: sales ? freight / sales : null,
+        laborPct: sales ? labor / sales : null,
+        travelPct: sales ? travel / sales : null,
+        commissionPct: sales ? commissionRate : null,
+        otherCostsPct: sales ? (operations + otherCosts) / sales : null,
+        marginPct: sales ? margin / sales : null
+      };
+    }
+
+    function inputCell(entry, field, type = 'text', wide = false) {
+      const td = document.createElement('td');
+      td.className = 'input';
+      const input = document.createElement('input');
+      input.type = type === 'number' ? 'text' : type;
+      input.dataset.id = entry.id;
+      input.dataset.field = field;
+      input.value = entry[field] ?? '';
+      if (wide) input.className = 'wide';
+      if (type === 'number') {
+        input.classList.add('numeric');
+        input.inputMode = 'decimal';
+        input.addEventListener('change', render);
+      }
+      input.addEventListener('input', onInput);
+      td.appendChild(input);
+      return td;
+    }
+
+    function calcCell(value, kind, negative = false) {
+      const td = document.createElement('td');
+      td.className = `calc${negative ? ' negative' : ''}`;
+      if (value === null) {
+        td.textContent = '—';
+        td.classList.add('empty');
+      } else {
+        td.textContent = kind === 'percent' ? percent.format(value) : money.format(value);
+      }
+      return td;
+    }
+
+    function quickEditCell(entry) {
+      const td = document.createElement('td');
+      td.className = 'remove';
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'quick-edit';
+      button.textContent = 'Editar custos';
+      button.addEventListener('click', () => openCostEditor(entry.id));
+      td.appendChild(button);
+      return td;
+    }
+
+    function printCell(entry) {
+      const td = document.createElement('td');
+      td.className = 'remove';
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'print-row';
+      button.textContent = 'Imprimir envio';
+      button.addEventListener('click', () => printEntry(entry.id));
+      td.appendChild(button);
+      return td;
+    }
+
+    function render() {
+      const tbody = document.getElementById('rows');
+      tbody.replaceChildren();
+
+      entries.forEach(entry => {
+        const result = calculate(entry);
+        const tr = document.createElement('tr');
+        tr.append(
+          inputCell(entry, 'date', 'date'),
+          inputCell(entry, 'invoice'),
+          inputCell(entry, 'destination', 'text', true),
+          inputCell(entry, 'description', 'text', true),
+          inputCell(entry, 'carrier', 'text', true),
+          inputCell(entry, 'sales', 'number'),
+          inputCell(entry, 'productCost', 'number'),
+          inputCell(entry, 'freight', 'number'),
+          inputCell(entry, 'labor', 'number'),
+          inputCell(entry, 'travel', 'number'),
+          inputCell(entry, 'operations', 'number'),
+          inputCell(entry, 'commissionRate', 'number'),
+          inputCell(entry, 'otherCosts', 'number'),
+          calcCell(result.totalCost, 'money'),
+          calcCell(result.freightPct, 'percent'),
+          calcCell(result.laborPct, 'percent'),
+          calcCell(result.travelPct, 'percent'),
+          calcCell(result.commissionPct, 'percent'),
+          calcCell(result.otherCostsPct, 'percent'),
+          calcCell(result.margin, 'money', result.margin < 0),
+          calcCell(result.marginPct, 'percent', result.marginPct !== null && result.marginPct < 0),
+          quickEditCell(entry),
+          printCell(entry),
+          inputCell(entry, 'notes', 'text', true)
+        );
+
+        const removeTd = document.createElement('td');
+        removeTd.className = 'remove';
+        const remove = document.createElement('button');
+        remove.type = 'button';
+        remove.className = 'delete';
+        remove.title = 'Eliminar envio';
+        remove.setAttribute('aria-label', 'Eliminar envio');
+        remove.textContent = '×';
+        remove.addEventListener('click', async () => {
+          if (!await deleteRemoteEntry(entry)) return;
+          entries = entries.filter(item => item.id !== entry.id);
+          if (!entries.length) entries.push(blankEntry());
+          saveEntries();
+          render();
+        });
+        removeTd.appendChild(remove);
+        tr.appendChild(removeTd);
+        tbody.appendChild(tr);
+      });
+
+      updateSummary();
+    }
+
+    function onInput(event) {
+      const { id, field } = event.target.dataset;
+      const entry = entries.find(item => item.id === id);
+      if (!entry) return;
+      entry[field] = event.target.value;
+      saveEntries(entry);
+      updateSummary();
+    }
+
+    function blankEntry() {
+      return { id: crypto.randomUUID(), date: '', invoice: '', destination: '', description: '', carrier: '', sales: '', productCost: '', freight: '', labor: '', travel: '', operations: '', commissionRate: '', otherCosts: '', notes: '' };
+    }
+
+    function openCostEditor(id) {
+      const entry = entries.find(item => item.id === id);
+      if (!entry) return;
+      editingCostId = id;
+      document.getElementById('costEditorItem').textContent = entry.description || entry.invoice || 'Envio sem descrição';
+      document.getElementById('editLabor').value = entry.labor ?? '';
+      document.getElementById('editTravel').value = entry.travel ?? '';
+      document.getElementById('editOperations').value = entry.operations ?? '';
+      document.getElementById('editCommission').value = entry.commissionRate ?? '';
+      document.getElementById('editOtherCosts').value = entry.otherCosts ?? '';
+      updateCostEditorTotal();
+      costEditor.showModal();
+      document.getElementById('editLabor').focus();
+    }
+
+    function updateCostEditorTotal() {
+      const entry = entries.find(item => item.id === editingCostId);
+      const commissionValue = number(entry?.sales) * number(document.getElementById('editCommission').value) / 100;
+      const total = number(document.getElementById('editLabor').value)
+        + number(document.getElementById('editTravel').value)
+        + number(document.getElementById('editOperations').value)
+        + commissionValue
+        + number(document.getElementById('editOtherCosts').value);
+      document.getElementById('editCostsTotal').textContent = money.format(total);
+    }
+
+    function textOrDash(value) {
+      const text = String(value ?? '').trim();
+      return text || '—';
+    }
+
+    function setPrintText(id, value) {
+      document.getElementById(id).textContent = value;
+    }
+
+    function printEntry(id) {
+      const entry = entries.find(item => item.id === id);
+      if (!entry) return;
+      const result = calculate(entry);
+      setPrintText('pDate', textOrDash(entry.date));
+      setPrintText('pInvoice', textOrDash(entry.invoice));
+      setPrintText('pDestination', textOrDash(entry.destination));
+      setPrintText('pDescription', textOrDash(entry.description));
+      setPrintText('pCarrier', textOrDash(entry.carrier));
+      setPrintText('pSales', money.format(result.sales));
+      setPrintText('pProductCost', money.format(result.productCost));
+      setPrintText('pFreight', money.format(result.freight));
+      setPrintText('pLabor', money.format(result.labor));
+      setPrintText('pTravel', money.format(result.travel));
+      setPrintText('pOperations', money.format(result.operations));
+      setPrintText('pCommissionRate', percent.format(result.commissionRate));
+      setPrintText('pCommission', money.format(result.commission));
+      setPrintText('pOtherCosts', money.format(result.otherCosts));
+      setPrintText('pTotalCost', money.format(result.totalCost));
+      setPrintText('pFreightPct', result.freightPct === null ? '—' : percent.format(result.freightPct));
+      setPrintText('pLaborPct', result.laborPct === null ? '—' : percent.format(result.laborPct));
+      setPrintText('pTravelPct', result.travelPct === null ? '—' : percent.format(result.travelPct));
+      setPrintText('pCommissionPct', result.commissionPct === null ? '—' : percent.format(result.commissionPct));
+      setPrintText('pOtherCostsPct', result.otherCostsPct === null ? '—' : percent.format(result.otherCostsPct));
+      setPrintText('pMargin', money.format(result.margin));
+      setPrintText('pMarginPct', result.marginPct === null ? '—' : percent.format(result.marginPct));
+      setPrintText('pNotes', textOrDash(entry.notes));
+      document.getElementById('printSheet').setAttribute('aria-hidden', 'false');
+      document.body.classList.add('print-single');
+      window.print();
+    }
+
+    window.addEventListener('afterprint', () => {
+      document.body.classList.remove('print-single');
+      document.getElementById('printSheet').setAttribute('aria-hidden', 'true');
+    });
+
+    costInputs.forEach(id => document.getElementById(id).addEventListener('input', updateCostEditorTotal));
+    document.getElementById('cancelCostEdit').addEventListener('click', () => {
+      editingCostId = null;
+      costEditor.close();
+    });
+    document.getElementById('costForm').addEventListener('submit', event => {
+      event.preventDefault();
+      const entry = entries.find(item => item.id === editingCostId);
+      if (entry) {
+        entry.labor = document.getElementById('editLabor').value;
+        entry.travel = document.getElementById('editTravel').value;
+        entry.operations = document.getElementById('editOperations').value;
+        entry.commissionRate = document.getElementById('editCommission').value;
+        entry.otherCosts = document.getElementById('editOtherCosts').value;
+        saveEntries(entry);
+      }
+      editingCostId = null;
+      costEditor.close();
+      render();
+    });
+
+    function updateSummary() {
+      const active = entries.filter(entry => fields.some(field => String(entry[field] ?? '').trim() !== ''));
+      const totals = active.reduce((sum, entry) => {
+        const row = calculate(entry);
+        sum.sales += row.sales;
+        sum.productCost += row.productCost;
+        sum.freight += row.freight;
+        sum.operational += row.operationalTotal;
+        sum.commission += row.commission;
+        sum.otherCosts += row.otherCosts;
+        sum.totalCost += row.totalCost;
+        sum.margin += row.margin;
+        return sum;
+      }, { sales: 0, productCost: 0, freight: 0, operational: 0, commission: 0, otherCosts: 0, totalCost: 0, margin: 0 });
+
+      document.getElementById('sumCount').textContent = active.length;
+      document.getElementById('sumSales').textContent = money.format(totals.sales);
+      document.getElementById('sumProductCost').textContent = money.format(totals.productCost);
+      document.getElementById('sumFreight').textContent = money.format(totals.freight);
+      document.getElementById('sumOperational').textContent = money.format(totals.operational);
+      document.getElementById('sumCommission').textContent = money.format(totals.commission);
+      document.getElementById('sumOtherCosts').textContent = money.format(totals.otherCosts);
+      document.getElementById('sumTotalCost').textContent = money.format(totals.totalCost);
+      const marginEl = document.getElementById('sumMargin');
+      marginEl.textContent = money.format(totals.margin);
+      marginEl.classList.toggle('negative', totals.margin < 0);
+    }
+
+    function csvCell(value) {
+      let text = typeof value === 'number' ? String(value).replace('.', ',') : String(value ?? '');
+      if (/^[=+\-@]/.test(text)) text = "'" + text;
+      return '"' + text.replaceAll('"', '""') + '"';
+    }
+
+    function exportCsv() {
+      const headers = ['Data', 'N.º da fatura', 'Cliente / destino', 'Descrição', 'Transportadora', 'PV / valor de venda', 'Preço de compra', 'Transporte', 'Mão de obra', 'Deslocação', 'Outros custos operacionais', 'Comissão do vendedor (%)', 'Valor da comissão', 'Outros custos', 'Custo total', 'Transporte / PV', 'Mão de obra / PV', 'Deslocação / PV', 'Comissão / PV', 'Outros custos / PV', 'Margem', 'Margem %', 'Observações'];
+      const rows = entries.map(entry => {
+        const result = calculate(entry);
+        return [entry.date, entry.invoice, entry.destination, entry.description, entry.carrier, result.sales, result.productCost, result.freight, result.labor, result.travel, result.operations, number(entry.commissionRate), result.commission, result.otherCosts, result.totalCost, result.freightPct ?? '', result.laborPct ?? '', result.travelPct ?? '', result.commissionPct ?? '', result.otherCostsPct ?? '', result.margin, result.marginPct ?? '', entry.notes];
+      });
+      const csv = '\uFEFF' + [headers, ...rows].map(row => row.map(csvCell).join(';')).join('\r\n');
+      const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = 'custos_envios_dm.csv';
+      link.click();
+      URL.revokeObjectURL(url);
+    }
+
+    async function signInToSupabase(email, password) {
+      const session = await authRequest('token?grant_type=password', { email, password });
+      saveSession(session);
+      await loadRemoteEntries();
+    }
+
+    async function initializeCloud() {
+      updateConnectionUi();
+      if (!cloudSession) return;
+      try {
+        await loadRemoteEntries();
+      } catch (error) {
+        console.error(error);
+        saveSession(null);
+        showSyncError('Sessão expirada; volte a entrar');
+      }
+    }
+
+    document.getElementById('connectSupabase').addEventListener('click', () => {
+      document.getElementById('loginError').textContent = '';
+      loginDialog.showModal();
+      document.getElementById('loginEmail').focus();
+    });
+
+    document.getElementById('cancelLogin').addEventListener('click', () => loginDialog.close());
+
+    document.getElementById('loginForm').addEventListener('submit', async event => {
+      event.preventDefault();
+      const errorElement = document.getElementById('loginError');
+      const submit = event.submitter;
+      errorElement.textContent = '';
+      if (submit) submit.disabled = true;
+      try {
+        await signInToSupabase(
+          document.getElementById('loginEmail').value.trim(),
+          document.getElementById('loginPassword').value
+        );
+        document.getElementById('loginPassword').value = '';
+        loginDialog.close();
+      } catch (error) {
+        errorElement.textContent = error.message || 'Não foi possível entrar.';
+      } finally {
+        if (submit) submit.disabled = false;
+      }
+    });
+
+    document.getElementById('disconnectSupabase').addEventListener('click', async () => {
+      try {
+        if (cloudSession?.access_token) {
+          await fetch(`${SUPABASE_URL}/auth/v1/logout`, {
+            method: 'POST',
+            headers: {
+              apikey: SUPABASE_PUBLISHABLE_KEY,
+              Authorization: `Bearer ${cloudSession.access_token}`,
+            },
+          });
+        }
+      } catch (error) {
+        console.error(error);
+      }
+      saveSession(null);
+      updateConnectionUi('Modo local');
+    });
+
+    document.getElementById('addRow').addEventListener('click', () => {
+      const entry = blankEntry();
+      entries.push(entry);
+      saveEntries(entry);
+      render();
+      document.querySelector('#rows tr:last-child input')?.focus();
+    });
+    document.getElementById('exportCsv').addEventListener('click', exportCsv);
+
+    saveEntries();
+    render();
+    initializeCloud();
+  </script>
+</body>
+</html>
