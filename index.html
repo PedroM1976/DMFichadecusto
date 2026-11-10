@@ -223,6 +223,23 @@
     .combined-table td:first-child { text-align: left; font-weight: 700; }
     .combined-table tfoot td { color: #171717; background: #f3d683; font-weight: 900; }
     .combined-results { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 12px; }
+    .distance-panel { margin-top: 12px; padding: 10px 12px; background: #f7f7f7; border: 1px solid #d9dde3; border-radius: 8px; }
+    .distance-head { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 8px; }
+    .distance-head h3 { margin: 0; font-size: 13px; }
+    .distance-origin { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; font-size: 11px; font-weight: 800; }
+    .distance-origin input { width: 110px; min-width: 0; padding: 6px 8px; color: #171717; background: white; border: 1px solid #cfd4dc; border-radius: 6px; }
+    .distance-origin button { padding: 6px 9px; font-size: 11px; }
+    .distance-table { width: 100%; min-width: 0; border-collapse: collapse; font-size: 10px; }
+    .distance-table th { position: static; padding: 6px; background: #4b5565; font-size: 9px; }
+    .distance-table td { padding: 5px 6px; border: 1px solid #d9dde3; }
+    .distance-table input { min-width: 0; padding: 6px; color: #171717; background: white; border: 1px solid #cfd4dc; border-radius: 5px; text-align: right; }
+    .distance-summary { display: flex; justify-content: flex-end; gap: 22px; margin-top: 7px; font-size: 11px; font-weight: 900; }
+    .distance-status { min-height: 17px; margin-top: 6px; color: #667085; font-size: 10px; }
+    .distance-attribution { margin: 3px 0 0; color: #7b8190; font-size: 9px; }
+    .distance-attribution a { color: inherit; }
+    .other-cost-inline { min-width: 116px; }
+    .other-cost-inline strong { display: block; }
+    .other-cost-inline button { margin-top: 4px; padding: 3px 6px; color: #8b6810; border-color: #d4b354; font-size: 10px; }
 
     dialog {
       width: min(560px, calc(100% - 28px));
@@ -320,7 +337,7 @@
       @page combined { size: A4 landscape; margin: 9mm; }
       body { background: white; }
       .page { width: 100%; margin: 0; padding: 0; border: 0; box-shadow: none; }
-      .actions, .delete, th:last-child, td.remove, .hint button { display: none !important; }
+      .actions, .delete, th:last-child, td.remove, .hint button, .distance-origin button { display: none !important; }
       .summary { grid-template-columns: repeat(4, 1fr); }
       .table-wrap { overflow: visible; border: 0; }
       table { min-width: 0; font-size: 9px; }
@@ -494,6 +511,26 @@
       <tbody id="combinedRows"></tbody>
       <tfoot><tr id="combinedTotals"></tr></tfoot>
     </table>
+    <div class="distance-panel">
+      <div class="distance-head">
+        <h3>Ponderação das deslocações</h3>
+        <div class="distance-origin">
+          <label>Origem <input id="combinedOrigin" type="text" value="Maia"></label>
+          <label>Código postal <input id="combinedOriginPostalCode" type="text" placeholder="0000-000"></label>
+          <button id="calculatePostalDistances" type="button">Calcular pelos códigos postais</button>
+        </div>
+      </div>
+      <table class="distance-table">
+        <thead><tr><th>Destino</th><th>Código postal</th><th>Distância ida e volta (km)</th><th>N.º deslocações</th><th>Peso total (km)</th></tr></thead>
+        <tbody id="distanceRows"></tbody>
+      </table>
+      <div class="distance-summary">
+        <span>Total: <b id="distanceTotal">0 km</b></span>
+        <span>Média ponderada: <b id="distanceWeightedAverage">—</b></span>
+      </div>
+      <div id="distanceStatus" class="distance-status"></div>
+      <p class="distance-attribution">Distâncias: © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap contributors</a>; cálculo de rota por OSRM. Pode sempre corrigir os km manualmente.</p>
+    </div>
     <div class="combined-results">
       <div class="print-result"><span>PV total</span><b id="combinedSales">€0,00</b></div>
       <div class="print-result"><span>Custo total</span><b id="combinedCost">€0,00</b></div>
@@ -554,18 +591,22 @@
     const SUPABASE_URL = 'https://lyihzeddgfbzmuqwrjya.supabase.co';
     const SUPABASE_PUBLISHABLE_KEY = 'sb_publishable_sBVSviRAaAi_l92aszt9xg_Q76yHSZC';
     const STORAGE_KEY = 'dm_folha_custos_envios_v2';
+    const ORIGIN_KEY = 'dm_folha_custos_origem_v1';
+    const ORIGIN_POSTAL_KEY = 'dm_folha_custos_origem_cp_v1';
     const money = new Intl.NumberFormat('pt-PT', { style: 'currency', currency: 'EUR' });
     const percent = new Intl.NumberFormat('pt-PT', { style: 'percent', minimumFractionDigits: 1, maximumFractionDigits: 1 });
-    const fields = ['date', 'invoice', 'destination', 'description', 'carrier', 'sales', 'productCost', 'freight', 'labor', 'travel', 'operations', 'commissionRate', 'otherCosts', 'otherCostItems', 'notes'];
+    const fields = ['date', 'invoice', 'destination', 'description', 'carrier', 'sales', 'productCost', 'freight', 'labor', 'travel', 'operations', 'commissionRate', 'otherCosts', 'otherCostItems', 'originPostalCode', 'postalCode', 'distanceKm', 'tripCount', 'notes'];
     const costEditor = document.getElementById('costEditor');
     const costInputs = ['editLabor', 'editTravel', 'editOperations', 'editCommission'];
     const syncTimers = new Map();
+    const geocodeCache = new Map();
     const selectedIds = new Set();
     const cloudSession = { access_token: SUPABASE_PUBLISHABLE_KEY };
     let editingCostId = null;
+    let lastGeocodeRequest = 0;
     const example = {
       id: crypto.randomUUID(), date: '', invoice: '', destination: '', description: 'Máquina', carrier: '',
-      sales: 4860, productCost: 3321, freight: 92.99, labor: '', travel: '', operations: '', commissionRate: '', otherCosts: '', otherCostItems: [], notes: ''
+      sales: 4860, productCost: 3321, freight: 92.99, labor: '', travel: '', operations: '', commissionRate: '', otherCosts: '', otherCostItems: [], originPostalCode: '', postalCode: '', distanceKm: '', tripCount: 1, notes: ''
     };
 
     let entries = loadEntries();
@@ -636,6 +677,10 @@
         comissao_vendedor_percentagem: number(entry.commissionRate),
         outros_custos: calculate(entry).otherCosts,
         outros_custos_detalhe: Array.isArray(entry.otherCostItems) ? entry.otherCostItems : [],
+        codigo_postal_origem: entry.originPostalCode || null,
+        codigo_postal_destino: entry.postalCode || null,
+        distancia_km: number(entry.distanceKm),
+        numero_deslocacoes: Math.max(1, Math.round(number(entry.tripCount) || 1)),
         observacoes: entry.notes || null,
       };
       if (includeId) row.id = entry.id;
@@ -659,6 +704,10 @@
         commissionRate: row.comissao_vendedor_percentagem ?? '',
         otherCosts: row.outros_custos ?? '',
         otherCostItems: Array.isArray(row.outros_custos_detalhe) ? row.outros_custos_detalhe : [],
+        originPostalCode: row.codigo_postal_origem || '',
+        postalCode: row.codigo_postal_destino || '',
+        distanceKm: row.distancia_km ?? '',
+        tripCount: row.numero_deslocacoes ?? 1,
         notes: row.observacoes || '',
         _remote: true,
       };
@@ -798,6 +847,24 @@
       return td;
     }
 
+    function otherCostsCell(entry, result) {
+      const td = document.createElement('td');
+      td.className = 'calc other-cost-inline';
+      const value = document.createElement('strong');
+      value.textContent = money.format(result.otherCosts);
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.textContent = '+ discriminar';
+      button.title = 'Adicionar gasolina, portagens ou outro custo';
+      button.addEventListener('click', () => {
+        openCostEditor(entry.id);
+        document.getElementById('otherCostItemsEditor').scrollIntoView({ block: 'center' });
+        document.querySelector('#otherCostItemsEditor .other-cost-value')?.focus();
+      });
+      td.append(value, button);
+      return td;
+    }
+
     function selectionCell(entry) {
       const td = document.createElement('td');
       td.className = 'select-cell';
@@ -818,6 +885,7 @@
       const button = document.getElementById('printCombined');
       button.textContent = `Folha conjunta (${selectedIds.size})`;
       button.disabled = selectedIds.size < 2;
+      renderCombinedPreview();
     }
 
     function quickEditCell(entry) {
@@ -865,7 +933,7 @@
           inputCell(entry, 'travel', 'number'),
           inputCell(entry, 'operations', 'number'),
           inputCell(entry, 'commissionRate', 'number'),
-          calcCell(result.otherCosts, 'money'),
+          otherCostsCell(entry, result),
           calcCell(result.totalCost, 'money'),
           calcCell(result.freightPct, 'percent'),
           calcCell(result.laborPct, 'percent'),
@@ -911,10 +979,11 @@
       entry[field] = event.target.value;
       saveEntries(entry);
       updateSummary();
+      if (selectedIds.has(entry.id)) renderCombinedPreview();
     }
 
     function blankEntry() {
-      return { id: crypto.randomUUID(), date: '', invoice: '', destination: '', description: '', carrier: '', sales: '', productCost: '', freight: '', labor: '', travel: '', operations: '', commissionRate: '', otherCosts: '', otherCostItems: [], notes: '' };
+      return { id: crypto.randomUUID(), date: '', invoice: '', destination: '', description: '', carrier: '', sales: '', productCost: '', freight: '', labor: '', travel: '', operations: '', commissionRate: '', otherCosts: '', otherCostItems: [], originPostalCode: '', postalCode: '', distanceKm: '', tripCount: 1, notes: '' };
     }
 
     function openCostEditor(id) {
@@ -1050,9 +1119,137 @@
       row.appendChild(cell);
     }
 
-    function printCombinedEntries() {
+    function updateDistanceSummary(selected) {
+      const totalKm = selected.reduce((sum, entry) => sum + number(entry.distanceKm) * Math.max(1, Math.round(number(entry.tripCount) || 1)), 0);
+      const totalTrips = selected.reduce((sum, entry) => sum + Math.max(1, Math.round(number(entry.tripCount) || 1)), 0);
+      setPrintText('distanceTotal', `${totalKm.toLocaleString('pt-PT', { maximumFractionDigits: 1 })} km`);
+      setPrintText('distanceWeightedAverage', totalTrips && totalKm
+        ? `${(totalKm / totalTrips).toLocaleString('pt-PT', { maximumFractionDigits: 1 })} km por deslocação`
+        : '—');
+    }
+
+    function distanceInput(entry, field, value, options = {}) {
+      const input = document.createElement('input');
+      input.type = 'text';
+      input.value = value ?? '';
+      input.placeholder = options.placeholder || '';
+      input.inputMode = options.numeric ? 'decimal' : 'text';
+      input.setAttribute('aria-label', options.label || field);
+      input.addEventListener('input', () => {
+        entry[field] = input.value;
+        saveEntries(entry);
+        updateDistanceSummary(entries.filter(item => selectedIds.has(item.id)));
+        if (field === 'distanceKm' || field === 'tripCount') {
+          const weight = input.closest('tr').querySelector('[data-distance-weight]');
+          weight.textContent = `${(number(entry.distanceKm) * Math.max(1, Math.round(number(entry.tripCount) || 1))).toLocaleString('pt-PT', { maximumFractionDigits: 1 })} km`;
+        }
+      });
+      return input;
+    }
+
+    function renderDistanceWeighting(selected) {
+      const origin = document.getElementById('combinedOrigin');
+      const originPostal = document.getElementById('combinedOriginPostalCode');
+      origin.value = localStorage.getItem(ORIGIN_KEY) || 'Maia';
+      originPostal.value = localStorage.getItem(ORIGIN_POSTAL_KEY) || selected.find(entry => entry.originPostalCode)?.originPostalCode || '';
+
+      const tbody = document.getElementById('distanceRows');
+      tbody.replaceChildren();
+      selected.forEach((entry, index) => {
+        const row = document.createElement('tr');
+        addCombinedCell(row, entry.destination || entry.description || entry.invoice || `Destino ${index + 1}`);
+
+        const postalCell = document.createElement('td');
+        postalCell.appendChild(distanceInput(entry, 'postalCode', entry.postalCode, { placeholder: '0000-000', label: 'Código postal do destino' }));
+        const kmCell = document.createElement('td');
+        kmCell.appendChild(distanceInput(entry, 'distanceKm', entry.distanceKm, { numeric: true, placeholder: '0', label: 'Distância de ida e volta em quilómetros' }));
+        const tripsCell = document.createElement('td');
+        tripsCell.appendChild(distanceInput(entry, 'tripCount', entry.tripCount || 1, { numeric: true, placeholder: '1', label: 'Número de deslocações' }));
+        const weightCell = document.createElement('td');
+        weightCell.dataset.distanceWeight = 'true';
+        weightCell.textContent = `${(number(entry.distanceKm) * Math.max(1, Math.round(number(entry.tripCount) || 1))).toLocaleString('pt-PT', { maximumFractionDigits: 1 })} km`;
+        row.append(postalCell, kmCell, tripsCell, weightCell);
+        tbody.appendChild(row);
+      });
+      updateDistanceSummary(selected);
+    }
+
+    function wait(milliseconds) {
+      return new Promise(resolve => setTimeout(resolve, milliseconds));
+    }
+
+    async function geocodePostalCode(postalCode) {
+      const normalized = String(postalCode || '').trim().toUpperCase();
+      if (geocodeCache.has(normalized)) return geocodeCache.get(normalized);
+      const elapsed = Date.now() - lastGeocodeRequest;
+      if (elapsed < 1100) await wait(1100 - elapsed);
+      lastGeocodeRequest = Date.now();
+      const params = new URLSearchParams({ postalcode: normalized, country: 'Portugal', countrycodes: 'pt', format: 'jsonv2', limit: '1' });
+      const response = await fetch(`https://nominatim.openstreetmap.org/search?${params}`, { headers: { 'Accept-Language': 'pt' } });
+      if (!response.ok) throw new Error(`Não foi possível procurar o código postal ${normalized}.`);
+      const results = await response.json();
+      if (!results.length) throw new Error(`Código postal ${normalized} não encontrado.`);
+      const point = { lat: Number(results[0].lat), lon: Number(results[0].lon) };
+      geocodeCache.set(normalized, point);
+      return point;
+    }
+
+    async function routeRoundTripKm(origin, destination) {
+      const coordinates = `${origin.lon},${origin.lat};${destination.lon},${destination.lat}`;
+      const response = await fetch(`https://router.project-osrm.org/route/v1/driving/${coordinates}?overview=false&alternatives=false&steps=false`);
+      if (!response.ok) throw new Error('O serviço de rotas não respondeu.');
+      const result = await response.json();
+      if (result.code !== 'Ok' || !result.routes?.length) throw new Error('Não foi encontrada uma rota rodoviária.');
+      return Math.round(result.routes[0].distance * 2 / 100) / 10;
+    }
+
+    async function calculatePostalDistances() {
       const selected = entries.filter(entry => selectedIds.has(entry.id));
-      if (selected.length < 2) return;
+      const originPostal = document.getElementById('combinedOriginPostalCode').value.trim();
+      const originName = document.getElementById('combinedOrigin').value.trim() || 'Maia';
+      const status = document.getElementById('distanceStatus');
+      if (!selected.length) {
+        status.textContent = 'Selecione primeiro as saídas que pretende juntar.';
+        return;
+      }
+      if (!originPostal) {
+        status.textContent = 'Indique o código postal de origem na Maia.';
+        document.getElementById('combinedOriginPostalCode').focus();
+        return;
+      }
+      const missing = selected.find(entry => !String(entry.postalCode || '').trim());
+      if (missing) {
+        status.textContent = `Falta o código postal de ${missing.destination || missing.description || 'um destino'}.`;
+        return;
+      }
+
+      const button = document.getElementById('calculatePostalDistances');
+      button.disabled = true;
+      localStorage.setItem(ORIGIN_KEY, originName);
+      localStorage.setItem(ORIGIN_POSTAL_KEY, originPostal);
+      try {
+        status.textContent = 'A localizar a origem…';
+        const originPoint = await geocodePostalCode(originPostal);
+        for (let index = 0; index < selected.length; index += 1) {
+          const entry = selected[index];
+          status.textContent = `A calcular ${index + 1} de ${selected.length}: ${entry.destination || entry.description || 'destino'}…`;
+          const destinationPoint = await geocodePostalCode(entry.postalCode);
+          entry.originPostalCode = originPostal;
+          entry.distanceKm = await routeRoundTripKm(originPoint, destinationPoint);
+          saveEntries(entry);
+        }
+        renderCombinedPreview();
+        status.textContent = 'Distâncias rodoviárias de ida e volta calculadas. Pode corrigir os valores manualmente.';
+      } catch (error) {
+        console.error(error);
+        status.textContent = `${error.message} Pode preencher os quilómetros manualmente.`;
+      } finally {
+        button.disabled = false;
+      }
+    }
+
+    function renderCombinedPreview() {
+      const selected = entries.filter(entry => selectedIds.has(entry.id));
 
       const tbody = document.getElementById('combinedRows');
       tbody.replaceChildren();
@@ -1081,6 +1278,12 @@
       setPrintText('combinedCost', money.format(totals.totalCost));
       setPrintText('combinedMargin', money.format(totals.margin));
       setPrintText('combinedMarginPct', totals.sales ? percent.format(totals.margin / totals.sales) : '—');
+      renderDistanceWeighting(selected);
+    }
+
+    function printCombinedEntries() {
+      if (selectedIds.size < 2) return;
+      renderCombinedPreview();
       document.getElementById('combinedPrintSheet').setAttribute('aria-hidden', 'false');
       document.body.classList.add('print-combined');
       window.print();
@@ -1154,11 +1357,11 @@
     }
 
     function exportCsv() {
-      const headers = ['Data', 'N.º da fatura', 'Cliente / destino', 'Descrição', 'Transportadora', 'PV / valor de venda', 'Preço de compra', 'Transporte', 'Mão de obra', 'Deslocação', 'Outros custos operacionais', 'Comissão do vendedor (%)', 'Valor da comissão', 'Detalhe de outros custos', 'Outros custos', 'Custo total', 'Transporte / PV', 'Mão de obra / PV', 'Deslocação / PV', 'Comissão / PV', 'Outros custos / PV', 'Margem', 'Margem %', 'Observações'];
+      const headers = ['Data', 'N.º da fatura', 'Cliente / destino', 'Descrição', 'Transportadora', 'PV / valor de venda', 'Preço de compra', 'Transporte', 'Mão de obra', 'Deslocação', 'Outros custos operacionais', 'Comissão do vendedor (%)', 'Valor da comissão', 'Detalhe de outros custos', 'Outros custos', 'Custo total', 'Transporte / PV', 'Mão de obra / PV', 'Deslocação / PV', 'Comissão / PV', 'Outros custos / PV', 'Margem', 'Margem %', 'Código postal de origem', 'Código postal do destino', 'Distância ida e volta (km)', 'N.º deslocações', 'Observações'];
       const rows = entries.map(entry => {
         const result = calculate(entry);
         const otherCostDetail = result.otherCostItems.map(item => `${item.description || 'Outro custo'}: ${money.format(number(item.value))}`).join(' | ');
-        return [entry.date, entry.invoice, entry.destination, entry.description, entry.carrier, result.sales, result.productCost, result.freight, result.labor, result.travel, result.operations, number(entry.commissionRate), result.commission, otherCostDetail, result.otherCosts, result.totalCost, result.freightPct ?? '', result.laborPct ?? '', result.travelPct ?? '', result.commissionPct ?? '', result.otherCostsPct ?? '', result.margin, result.marginPct ?? '', entry.notes];
+        return [entry.date, entry.invoice, entry.destination, entry.description, entry.carrier, result.sales, result.productCost, result.freight, result.labor, result.travel, result.operations, number(entry.commissionRate), result.commission, otherCostDetail, result.otherCosts, result.totalCost, result.freightPct ?? '', result.laborPct ?? '', result.travelPct ?? '', result.commissionPct ?? '', result.otherCostsPct ?? '', result.margin, result.marginPct ?? '', entry.originPostalCode, entry.postalCode, number(entry.distanceKm), Math.max(1, Math.round(number(entry.tripCount) || 1)), entry.notes];
       });
       const csv = '\uFEFF' + [headers, ...rows].map(row => row.map(csvCell).join(';')).join('\r\n');
       const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
@@ -1187,6 +1390,9 @@
       document.querySelector('#rows tr:last-child input')?.focus();
     });
     document.getElementById('printCombined').addEventListener('click', printCombinedEntries);
+    document.getElementById('combinedOrigin').addEventListener('input', event => localStorage.setItem(ORIGIN_KEY, event.target.value));
+    document.getElementById('combinedOriginPostalCode').addEventListener('input', event => localStorage.setItem(ORIGIN_POSTAL_KEY, event.target.value));
+    document.getElementById('calculatePostalDistances').addEventListener('click', calculatePostalDistances);
     document.getElementById('exportCsv').addEventListener('click', exportCsv);
 
     saveEntries();
