@@ -3,6 +3,8 @@
 
 alter table public.custos_envios enable row level security;
 alter table public.custos_envios alter column created_by drop not null;
+alter table public.custos_envios
+  add column if not exists outros_custos_detalhe jsonb not null default '[]'::jsonb;
 
 drop policy if exists "Utilizadores autenticados podem consultar custos" on public.custos_envios;
 drop policy if exists "Utilizadores autenticados podem criar custos" on public.custos_envios;
@@ -50,6 +52,7 @@ grant update (
   outros_custos_operacionais,
   comissao_vendedor_percentagem,
   outros_custos,
+  outros_custos_detalhe,
   observacoes
 ) on table public.custos_envios to anon, authenticated;
 
