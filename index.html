@@ -223,6 +223,7 @@
     .combined-table td { padding: 7px 5px; border: 1px solid #d9dde3; text-align: right; }
     .combined-table td:first-child { text-align: left; font-weight: 700; }
     .combined-table tfoot td { color: #171717; background: #f3d683; font-weight: 900; }
+    .combined-table .line-margin { font-weight: 900; background: #fff5d7; }
     .combined-results { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 12px; }
     .combined-average-strip { display: grid; grid-template-columns: repeat(4, 1fr); margin-top: 8px; overflow: hidden; background: #edf3f8; border: 1px solid #cfd8e3; border-radius: 7px; }
     .combined-average-strip span { padding: 7px 9px; border-right: 1px solid #cfd8e3; color: #4b5565; font-size: 9px; text-transform: uppercase; }
@@ -579,7 +580,7 @@
     <table class="combined-table">
       <thead>
         <tr>
-          <th>Saída</th><th>PV</th><th>Compra</th><th>Transporte</th><th>Mão de obra</th><th>Deslocação</th><th>Operacionais</th><th>Comissão</th><th>Outros</th><th>Custo total</th><th>Margem</th>
+          <th>Fatura / Cliente / destino</th><th>PV</th><th>Compra</th><th>Transporte</th><th>Mão de obra</th><th>Deslocação</th><th>Operacionais</th><th>Comissão</th><th>Outros</th><th>Custo total</th><th>Margem €</th><th>Margem %</th>
         </tr>
       </thead>
       <tbody id="combinedRows"></tbody>
@@ -622,7 +623,7 @@
         </div>
       </div>
       <table class="distance-table">
-        <thead><tr><th>Ordem / fatura / destino</th><th>Código postal</th><th>Km atribuídos (último inclui regresso)</th><th>Troço / regresso</th><th>Peso na despesa</th></tr></thead>
+        <thead><tr><th>Ordem / fatura / destino</th><th>Código postal</th><th>Troço de chegada</th><th>Km do troço</th><th>Quota do regresso (km)</th><th>Km para repartição</th><th>Peso: troço + regresso = total</th></tr></thead>
         <tbody id="distanceRows"></tbody>
       </table>
       <div class="distance-summary">
@@ -631,7 +632,8 @@
         <span hidden>Média ponderada: <b id="distanceWeightedAverage">—</b></span>
       </div>
       <div id="distanceStatus" class="distance-status"></div>
-      <p class="distance-attribution">Ordem indicada abaixo: origem → destinos → origem. O regresso é atribuído ao último destino. Gasóleo e portagens: valor total × km atribuídos ao destino ÷ km totais da rota. Use ↑ e ↓ para ordenar e volte a calcular antes de aplicar despesas.</p>
+      <div id="returnAllocationSummary" class="distance-attribution"></div>
+      <p class="distance-attribution">Ordem: origem → destinos → origem. Cada venda recebe o seu troço de chegada + uma parte igual do regresso (km de regresso ÷ número de destinos). Gasóleo e portagens: valor total × km atribuídos à venda ÷ km totais da rota. Use ↑ e ↓ para ordenar e volte a calcular antes de aplicar despesas.</p>
       <div class="route-map-wrap">
         <div class="route-map-title"><span>Mapa da rota conjunta</span><span id="combinedRouteLabel">Maia → destinos → Maia</span></div>
         <div id="combinedRouteMap"><div class="route-map-empty">Calcule pelos códigos postais para desenhar a rota.</div></div>
@@ -1285,6 +1287,10 @@
       setPrintText('distanceWeightedAverage', totalTrips && totalKm
         ? `${(totalKm / totalTrips).toLocaleString('pt-PT', { maximumFractionDigits: 1 })} km por deslocação`
         : '—');
+      const detail = selected.length ? routeDetails.get(selected[0].id) : null;
+      setPrintText('returnAllocationSummary', detail
+        ? `Regresso do último destino à origem: ${detail.returnTotalKm.toLocaleString('pt-PT', { maximumFractionDigits: 2 })} km ÷ ${selected.length} destinos = ${detail.returnKm.toLocaleString('pt-PT', { maximumFractionDigits: 2 })} km por venda. Percentagens calculadas sem arredondamentos intermédios.`
+        : 'O regresso será repartido igualmente por todos os destinos após calcular a rota.');
     }
 
     function distanceInput(entry, field, value, options = {}) {
@@ -1354,21 +1360,41 @@
         const postalCell = document.createElement('td');
         postalCell.appendChild(distanceInput(entry, 'postalCode', entry.postalCode, { placeholder: '0000-000', label: 'Código postal do destino', className: 'destination-postal-input' }));
         const kmCell = document.createElement('td');
-        const kmInput = distanceInput(entry, 'distanceKm', calculatedDistanceKey ? entry.distanceKm : '', { numeric: true, placeholder: 'Calcular rota', label: 'Km do troço incluindo regresso no último destino', className: 'destination-km-input' });
-        kmInput.readOnly = true;
-        kmCell.appendChild(kmInput);
         const tripsCell = document.createElement('td');
         const detail = routeDetails.get(entry.id);
         const from = index === 0 ? origin.value : (selected[index - 1].destination || selected[index - 1].postalCode);
         tripsCell.textContent = `${from} → ${entry.destination || entry.postalCode || 'destino'}`;
-        if (detail) tripsCell.textContent += `: ${detail.inboundKm.toLocaleString('pt-PT')} km`;
-        if (index === selected.length - 1) tripsCell.textContent += detail ? ` + regresso: ${detail.returnKm.toLocaleString('pt-PT')} km` : ' + regresso à origem';
+        kmCell.textContent = detail ? detail.inboundKm.toLocaleString('pt-PT', { maximumFractionDigits: 2 }) : '—';
+        const returnCell = document.createElement('td');
+        returnCell.textContent = detail ? detail.returnKm.toLocaleString('pt-PT', { maximumFractionDigits: 2 }) : '—';
+        const allocatedCell = document.createElement('td');
+        allocatedCell.textContent = detail ? detail.totalKm.toLocaleString('pt-PT', { maximumFractionDigits: 2 }) : '—';
         const weightCell = document.createElement('td');
         weightCell.dataset.distanceWeight = 'true';
-        weightCell.textContent = totalRouteKm ? percent.format(number(entry.distanceKm) / totalRouteKm) : '—';
-        row.append(postalCell, kmCell, tripsCell, weightCell);
+        weightCell.textContent = totalRouteKm && detail
+          ? `${percent.format(detail.inboundKm / totalRouteKm)} + ${percent.format(detail.returnKm / totalRouteKm)} = ${percent.format(number(entry.distanceKm) / totalRouteKm)}`
+          : '—';
+        row.append(postalCell, tripsCell, kmCell, returnCell, allocatedCell, weightCell);
         tbody.appendChild(row);
       });
+      if (selected.length) {
+        const last = selected[selected.length - 1];
+        const detail = routeDetails.get(last.id);
+        const returnRow = document.createElement('tr');
+        const returnLabel = document.createElement('td');
+        returnLabel.colSpan = 3;
+        returnLabel.textContent = `Regresso partilhado: ${last.destination || last.postalCode || 'último destino'} → ${origin.value}`;
+        const returnDistance = document.createElement('td');
+        returnDistance.textContent = detail ? `${detail.returnTotalKm.toLocaleString('pt-PT', { maximumFractionDigits: 2 })} km` : '—';
+        const returnRule = document.createElement('td');
+        returnRule.colSpan = 3;
+        returnRule.textContent = detail
+          ? `÷ ${selected.length} destinos = ${detail.returnKm.toLocaleString('pt-PT', { maximumFractionDigits: 2 })} km por destino (já incluídos nas quotas acima).`
+          : `A dividir igualmente pelos ${selected.length} destinos.`;
+        returnRow.style.fontWeight = '700';
+        returnRow.append(returnLabel, returnDistance, returnRule);
+        tbody.appendChild(returnRow);
+      }
       updateDistanceSummary(calculatedDistanceKey ? selected : []);
       const nextRouteKey = selected.map(entry => `${entry.id}:${entry.postalCode || ''}`).join('|');
       if (combinedRouteKey && combinedRouteKey !== nextRouteKey) clearCombinedRouteMap();
@@ -1503,10 +1529,11 @@
           legs.some(leg => !Number.isFinite(leg.distance) || leg.distance < 0)) {
         throw new Error('Não foi possível obter todos os troços e o regresso.');
       }
+      const returnTotalKm = Math.round(legs[count].distance / 100) / 10;
+      const returnKm = returnTotalKm / count;
       return Array.from({ length: count }, (_, index) => {
         const inboundKm = Math.round(legs[index].distance / 100) / 10;
-        const returnKm = index === count - 1 ? Math.round(legs[count].distance / 100) / 10 : 0;
-        return { inboundKm, returnKm, totalKm: Math.round((inboundKm + returnKm) * 10) / 10 };
+        return { inboundKm, returnKm, returnTotalKm, totalKm: inboundKm + returnKm };
       });
     }
 
@@ -1566,7 +1593,7 @@
         const routeKey = selected.map(entry => `${entry.id}:${entry.postalCode || ''}`).join('|');
         try {
           renderCombinedRouteMap(routePoints, routeLabels, combinedRoute.geometry, allocations.reduce((sum, part) => sum + part.totalKm, 0), routeKey);
-          status.textContent = 'Rota calculada. O último destino inclui o regresso. Pode aplicar as despesas pelos km.';
+          status.textContent = 'Rota calculada. O regresso está dividido igualmente por todos os destinos. Despesas já aplicadas mantêm os valores anteriores: retire-as antes de as aplicar com a nova repartição.';
         } catch (mapError) {
           status.textContent = 'Quilómetros calculados; mapa indisponível. Pode aplicar as despesas pelos km.';
         }
@@ -1751,7 +1778,7 @@
           return;
         }
         const allocation = draft.target === 'distance'
-          ? 'Repartido pelos troços da rota; regresso incluído no último destino'
+          ? 'Repartido pelo troço de cada venda + quota igual do regresso'
           : draft.target === 'proportional'
             ? 'Repartido pelo PV das faturas'
             : 'Repartido igualmente pelo grupo';
@@ -1831,12 +1858,24 @@
       selected.forEach((entry, index) => {
         const result = calculate(entry);
         const row = document.createElement('tr');
-        const label = entry.description || entry.invoice || `Saída ${index + 1}`;
-        addCombinedCell(row, entry.invoice ? `${entry.invoice} — ${label}` : label);
+        const labelCell = document.createElement('td');
+        const invoiceLabel = document.createElement('strong');
+        invoiceLabel.textContent = entry.invoice ? `Fatura ${entry.invoice}` : `Saída ${index + 1}`;
+        const destinationLabel = document.createElement('div');
+        destinationLabel.textContent = entry.destination || 'Cliente / destino por preencher';
+        labelCell.append(invoiceLabel, destinationLabel);
+        row.appendChild(labelCell);
         for (const key of Object.keys(totals)) {
           totals[key] += result[key];
           addCombinedCell(row, money.format(result[key]));
+          if (key === 'margin') {
+            row.lastElementChild.classList.add('line-margin');
+            row.lastElementChild.classList.toggle('negative', result.margin < 0);
+          }
         }
+        addCombinedCell(row, result.marginPct === null ? '—' : percent.format(result.marginPct));
+        row.lastElementChild.classList.add('line-margin');
+        row.lastElementChild.classList.toggle('negative', result.margin < 0);
         tbody.appendChild(row);
       });
 
@@ -1844,6 +1883,7 @@
       totalRow.replaceChildren();
       addCombinedCell(totalRow, 'Totais');
       for (const key of Object.keys(totals)) addCombinedCell(totalRow, money.format(totals[key]));
+      addCombinedCell(totalRow, totals.sales ? percent.format(totals.margin / totals.sales) : '—');
 
       setPrintText('combinedCount', `${selected.length} saídas selecionadas`);
       setPrintText('combinedDate', new Intl.DateTimeFormat('pt-PT', { dateStyle: 'long' }).format(new Date()));
