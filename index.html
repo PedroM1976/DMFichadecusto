@@ -367,6 +367,7 @@
     .route-modes label { flex: 1; padding: 14px; border: 2px solid #ccd3de; border-radius: 9px; cursor: pointer; }
     .route-modes label:has(input:checked) { border-color: #b68b12; background: #fff6d9; }
     .route-modes input { width: auto; margin-right: 8px; }
+    .distance-table .route-return-row td { background: #fff0bf; color: #171717; font-weight: 700; }
     .route-modes small { display: block; margin-top: 5px; }
     .simulation-controls { padding: 6px 0; color: #40546a; font-size: 12px; }
     .combined-expense-line { flex-wrap: wrap; }
@@ -1416,6 +1417,7 @@
         const last = selected[selected.length - 1];
         const detail = routeDetails.get(last.id);
         const returnRow = document.createElement('tr');
+        returnRow.className = 'route-return-row';
         const returnLabel = document.createElement('td');
         returnLabel.colSpan = 3;
         returnLabel.textContent = `Regresso partilhado: ${last.destination || last.postalCode || 'último destino'} → ${origin.value}`;
@@ -1424,7 +1426,7 @@
         const returnRule = document.createElement('td');
         returnRule.colSpan = 4;
         returnRule.textContent = detail
-          ? (includeReturn ? `÷ ${selected.length} destinos = ${detail.returnKm.toLocaleString('pt-PT', { maximumFractionDigits: 2 })} km por destino (incluídos acima).` : 'Regresso apresentado para informação; excluído desta simulação.')
+          ? (includeReturn ? `100% do regresso ÷ ${selected.length} destinos = ${routePercent.format(1 / selected.length)} por destino (${detail.returnKm.toLocaleString('pt-PT', { maximumFractionDigits: 2 })} km cada).` : 'Regresso apresentado para informação; excluído desta simulação.')
           : `A dividir igualmente pelos ${selected.length} destinos.`;
         returnRow.style.fontWeight = '700';
         returnRow.append(returnLabel, returnDistance, returnRule);
