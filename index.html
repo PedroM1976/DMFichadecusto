@@ -362,6 +362,47 @@
       .group-cost-actions { align-items: stretch; flex-direction: column; }
     }
 
+    /* The same compact layout is measured before printing and used on paper. */
+    #combinedPrintSheet.combined-a4 {
+      width: 277mm; max-width: none; max-height: none; overflow: visible;
+      margin: 0; padding: 0; font-size: 10px; line-height: 1.25;
+      zoom: var(--combined-print-scale, 1);
+      print-color-adjust: exact; -webkit-print-color-adjust: exact;
+    }
+    .combined-a4 .print-header { grid-template-columns: 145px 1fr; gap: 14px; padding-bottom: 6px; }
+    .combined-a4 .print-logo { width: 140px; max-height: 48px; }
+    .combined-a4 .print-header h1 { font-size: 20px; margin-bottom: 3px; }
+    .combined-a4 .print-header p { margin: 0; font-size: 11px; }
+    .combined-a4 .combined-meta { margin: 7px 0; }
+    .combined-a4 table { width: 100%; min-width: 0; table-layout: fixed; font-size: 9px; }
+    .combined-a4 .combined-table th, .combined-a4 .combined-table td,
+    .combined-a4 .distance-table th, .combined-a4 .distance-table td {
+      padding: 4px; white-space: normal; overflow-wrap: anywhere; font-size: 9px;
+    }
+    .combined-a4 .combined-table th:first-child { width: 15%; }
+    .combined-a4 .combined-results { gap: 5px; margin-top: 6px; }
+    .combined-a4 .print-result { padding: 6px 8px; }
+    .combined-a4 .print-result span { font-size: 9px; margin-bottom: 2px; }
+    .combined-a4 .print-result b { font-size: 13px; }
+    .combined-a4 .combined-average-strip { margin-top: 5px; }
+    .combined-a4 .combined-average-strip span { padding: 4px 7px; }
+    .combined-a4 .combined-average-strip b { font-size: 11px; }
+    .combined-a4 .group-costs-panel, .combined-a4 .distance-panel { margin-top: 6px; padding: 6px 8px; }
+    .combined-a4 .combined-expense-summary { margin: 0; padding: 0; border: 0; }
+    .combined-a4 .combined-expense-line { padding: 2px 0; overflow-wrap: anywhere; }
+    .combined-a4 .distance-head { margin-bottom: 5px; gap: 8px; }
+    .combined-a4 .distance-summary { margin-top: 4px; font-size: 10px; gap: 12px; }
+    .combined-a4 .distance-attribution { font-size: 8px; margin: 3px 0; }
+    .combined-a4 .route-map-wrap { margin-top: 5px; }
+    .combined-a4 .route-map-title { font-size: 9px; }
+    .combined-a4 #combinedRouteMap { height: 30mm; }
+    .combined-a4 .group-cost-editor, .combined-a4 .combined-expense-line button,
+    .combined-a4 .route-order-button, .combined-a4 .distance-origin button,
+    .combined-a4 #distanceStatus, .combined-a4 .leaflet-control-container,
+    .combined-a4 input { display: none !important; }
+    .print-field-value { display: none; }
+    .combined-a4 .print-field-value { display: inline; overflow-wrap: anywhere; }
+
     @media print {
       @page single { size: A4 portrait; margin: 11mm; }
       @page combined { size: A4 landscape; margin: 9mm; }
@@ -374,15 +415,15 @@
       table { min-width: 0; font-size: 9px; }
       input { padding: 5px 3px; font-size: 9px; }
       td.calc, th { padding: 6px 4px; }
-      body.print-single .page { display: none !important; }
+      body.print-single .page, body.print-single #combinedPrintSheet { display: none !important; }
       body.print-single #printSheet { display: block !important; }
       body.print-combined .page, body.print-combined #printSheet { display: none !important; }
       body.print-combined #combinedPrintSheet { display: block !important; }
       body.print-single { min-height: 0; }
       body.print-combined { min-height: 0; }
       .print-document { width: 188mm; max-height: 275mm; overflow: hidden; page: single; }
-      #combinedPrintSheet { width: 277mm; max-height: 190mm; page: combined; }
-      #combinedRouteMap { height: 32mm; }
+      #combinedPrintSheet { width: 277mm; max-height: none; overflow: visible; page: combined; }
+      #combinedPrintSheet.combined-a4 { break-inside: avoid; }
       .leaflet-control-container { display: none !important; }
     }
   </style>
@@ -1820,19 +1861,63 @@
       renderDistanceWeighting(selected);
     }
 
-    function printCombinedEntries() {
+    function fitCombinedSheetToA4() {
+      const sheet = document.getElementById('combinedPrintSheet');
+      sheet.style.setProperty('--combined-print-scale', '1');
+      sheet.classList.add('combined-a4');
+      sheet.querySelectorAll('.print-field-value').forEach(span => span.remove());
+      sheet.querySelectorAll('input').forEach(input => {
+        const value = document.createElement('span');
+        value.className = 'print-field-value';
+        value.textContent = input.value || '—';
+        input.insertAdjacentElement('afterend', value);
+      });
+      // Leave 2 mm of spare height within the 192 mm printable landscape page.
+      const pixelsPerMm = sheet.getBoundingClientRect().width / 277;
+      const fullHeight = Math.max(sheet.scrollHeight, sheet.getBoundingClientRect().height);
+      const scale = Math.min(1, 190 * pixelsPerMm / Math.max(1, fullHeight));
+      sheet.style.setProperty('--combined-print-scale', String(Math.floor(scale * 1000) / 1000));
+    }
+
+    async function printCombinedEntries() {
       if (selectedIds.size < 2) return;
       renderCombinedPreview();
       document.getElementById('combinedPrintSheet').setAttribute('aria-hidden', 'false');
       document.body.classList.add('print-combined');
+      fitCombinedSheetToA4();
+      if (combinedRouteMap && combinedRouteLayer) {
+        combinedRouteMap.invalidateSize({ animate: false });
+        combinedRouteMap.fitBounds(combinedRouteLayer.getBounds(), { padding: [15, 15], animate: false });
+        // Wait briefly for the visible map tiles, without blocking printing on a failed tile.
+        const tiles = [...document.querySelectorAll('#combinedRouteMap img')];
+        await Promise.race([
+          Promise.all(tiles.map(img => img.complete ? Promise.resolve() : new Promise(resolve => {
+            img.addEventListener('load', resolve, { once: true });
+            img.addEventListener('error', resolve, { once: true });
+          }))),
+          wait(2000),
+        ]);
+      }
       window.print();
     }
+
+    window.addEventListener('beforeprint', () => {
+      if (document.body.classList.contains('print-combined')) fitCombinedSheetToA4();
+    });
 
     window.addEventListener('afterprint', () => {
       document.body.classList.remove('print-single');
       document.body.classList.remove('print-combined');
       document.getElementById('printSheet').setAttribute('aria-hidden', 'true');
       document.getElementById('combinedPrintSheet').setAttribute('aria-hidden', 'true');
+      const sheet = document.getElementById('combinedPrintSheet');
+      sheet.classList.remove('combined-a4');
+      sheet.style.removeProperty('--combined-print-scale');
+      sheet.querySelectorAll('.print-field-value').forEach(span => span.remove());
+      if (combinedRouteMap && combinedRouteLayer) {
+        combinedRouteMap.invalidateSize({ animate: false });
+        combinedRouteMap.fitBounds(combinedRouteLayer.getBounds(), { padding: [22, 22], animate: false });
+      }
     });
 
     costInputs.forEach(id => document.getElementById(id).addEventListener('input', updateCostEditorTotal));
