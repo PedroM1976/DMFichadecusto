@@ -391,12 +391,14 @@
       padding: 3px; white-space: normal; overflow-wrap: anywhere; font-size: 9px;
     }
     .combined-a4 .combined-table th:first-child { width: 15%; }
-    .combined-a4 .distance-table th:nth-child(1) { width: 22%; }
-    .combined-a4 .distance-table th:nth-child(2) { width: 8%; }
-    .combined-a4 .distance-table th:nth-child(3) { width: 23%; }
-    .combined-a4 .distance-table th:nth-child(4), .combined-a4 .distance-table th:nth-child(5),
-    .combined-a4 .distance-table th:nth-child(6) { width: 9%; }
-    .combined-a4 .distance-table th:nth-child(7) { width: 20%; }
+    .combined-a4 .distance-table th:nth-child(1) { width: 18%; }
+    .combined-a4 .distance-table th:nth-child(2) { width: 7%; }
+    .combined-a4 .distance-table th:nth-child(3) { width: 19%; }
+    .combined-a4 .distance-table th:nth-child(4) { width: 7%; }
+    .combined-a4 .distance-table th:nth-child(5) { width: 9%; }
+    .combined-a4 .distance-table th:nth-child(6) { width: 12%; }
+    .combined-a4 .distance-table th:nth-child(7) { width: 9%; }
+    .combined-a4 .distance-table th:nth-child(8) { width: 19%; }
     .combined-a4 .combined-results { gap: 5px; margin-top: 6px; }
     .combined-a4 .print-result { padding: 6px 8px; }
     .combined-a4 .print-result span { font-size: 9px; margin-bottom: 2px; }
@@ -642,11 +644,13 @@
       </div>
       <div class="route-modes" role="radiogroup" aria-label="Método de simulação das despesas">
         <label><input type="radio" name="routeExpenseMode" value="outbound"> <b>Só troço</b><small>Divide 100% da despesa pelos km de chegada a cada destino. Exclui o regresso do peso.</small></label>
-        <label><input type="radio" name="routeExpenseMode" value="return" checked> <b>Troço + regresso partilhado</b><small>Soma ao troço de cada destino uma parte igual dos km de regresso.</small></label>
+        <label><input type="radio" name="routeExpenseMode" value="return" checked> <b>Troço + regresso partilhado</b><small>Reparte cada troço pelas entregas ainda por fazer e divide o regresso igualmente por todos os destinos.</small></label>
       </div>
+      <div class="simulation-controls"><button id="applyAllRouteExpenses" type="button">Aplicar pesos a todas as despesas por km</button></div>
+      <p id="routeExpenseCheck" role="status"></p>
       <p id="routeModeSummary" class="distance-attribution"></p>
       <table class="distance-table">
-        <thead><tr><th>Ordem / fatura / destino</th><th>Código postal</th><th>Troço de chegada</th><th>Km do troço</th><th>Quota do regresso (% e km)</th><th>Km para repartição</th><th id="routeWeightHeading">Peso na despesa total</th></tr></thead>
+        <thead><tr><th>Ordem / fatura / destino</th><th>Código postal</th><th>Troço de chegada</th><th>Km do troço</th><th>Quota de ida (km)</th><th>Quota do regresso (% e km)</th><th>Km para repartição</th><th id="routeWeightHeading">Peso na despesa total</th></tr></thead>
         <tbody id="distanceRows"></tbody>
       </table>
       <div class="distance-summary">
@@ -722,6 +726,7 @@
     const ORIGIN_POSTAL_KEY = 'dm_folha_custos_origem_cp_v1';
     const money = new Intl.NumberFormat('pt-PT', { style: 'currency', currency: 'EUR' });
     const percent = new Intl.NumberFormat('pt-PT', { style: 'percent', minimumFractionDigits: 1, maximumFractionDigits: 1 });
+    const routePercent = new Intl.NumberFormat('pt-PT', { style: 'percent', minimumFractionDigits: 2, maximumFractionDigits: 2 });
     const fields = ['date', 'invoice', 'destination', 'description', 'carrier', 'sales', 'productCost', 'freight', 'labor', 'travel', 'operations', 'commissionRate', 'otherCosts', 'otherCostItems', 'groupExpenses', 'originPostalCode', 'postalCode', 'distanceKm', 'tripCount', 'notes'];
     const costEditor = document.getElementById('costEditor');
     const costInputs = ['editLabor', 'editTravel', 'editOperations', 'editCommission'];
@@ -1312,7 +1317,7 @@
         : '—');
       const detail = selected.length ? routeDetails.get(selected[0].id) : null;
       setPrintText('returnAllocationSummary', detail
-        ? `Regresso: 100% ÷ ${selected.length} destinos = ${(100 / selected.length).toLocaleString('pt-PT', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}% do regresso por destino. ${detail.returnTotalKm.toLocaleString('pt-PT', { maximumFractionDigits: 2 })} km ÷ ${selected.length} = ${detail.returnKm.toLocaleString('pt-PT', { maximumFractionDigits: 2 })} km por destino. Esta quota é igual para todos; o peso na despesa total inclui também o troço de chegada. Cálculo sem arredondamentos intermédios.`
+        ? `Regresso: 100% ÷ ${selected.length} destinos = ${(100 / selected.length).toLocaleString('pt-PT', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}% do regresso por destino. ${detail.returnTotalKm.toLocaleString('pt-PT', { maximumFractionDigits: 2 })} km ÷ ${selected.length} = ${detail.returnKm.toLocaleString('pt-PT', { maximumFractionDigits: 2 })} km por destino. Na opção partilhada, a quota de ida soma as partes dos troços comuns até à entrega. Cálculo sem arredondamentos intermédios.`
         : 'O regresso será repartido igualmente por todos os destinos após calcular a rota.');
     }
 
@@ -1361,8 +1366,8 @@
       const includeReturn = routeExpenseMode() === 'return';
       const weights = currentRouteWeights(selected);
       const totalRouteKm = weights.reduce((sum, km) => sum + km, 0);
-      setPrintText('routeWeightHeading', includeReturn ? 'Peso na despesa total (troço + quota do regresso)' : 'Peso na despesa total (só troço)');
-      setPrintText('routeModeSummary', `Simulação: ${routeAllocationLabel()}. Base de repartição: ${totalRouteKm.toLocaleString('pt-PT', { maximumFractionDigits: 2 })} km. As margens acima correspondem às despesas já aplicadas.`);
+      setPrintText('routeWeightHeading', includeReturn ? 'Peso: ida + retorno = total' : 'Peso na despesa total (só troço)');
+      setPrintText('routeModeSummary', `${includeReturn ? 'Troço + regresso partilhado' : 'Só troço'} — ${routeAllocationLabel()}. Base: ${totalRouteKm.toLocaleString('pt-PT', { maximumFractionDigits: 2 })} km. Os pesos de ida e retorno usam esta mesma base; a quota de 33,33% (com 3 destinos) refere-se apenas ao regresso.`);
 
       const tbody = document.getElementById('distanceRows');
       tbody.replaceChildren();
@@ -1392,6 +1397,9 @@
         const from = index === 0 ? origin.value : (selected[index - 1].destination || selected[index - 1].postalCode);
         tripsCell.textContent = `${from} → ${entry.destination || entry.postalCode || 'destino'}`;
         kmCell.textContent = detail ? detail.inboundKm.toLocaleString('pt-PT', { maximumFractionDigits: 2 }) : '—';
+        const outboundShare = detail ? weights[index] - (includeReturn ? detail.returnKm : 0) : 0;
+        const outboundCell = document.createElement('td');
+        outboundCell.textContent = detail ? outboundShare.toLocaleString('pt-PT', { maximumFractionDigits: 2 }) : '—';
         const returnCell = document.createElement('td');
         returnCell.textContent = detail ? (includeReturn ? `${(100 / selected.length).toLocaleString('pt-PT', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}% do regresso · ${detail.returnKm.toLocaleString('pt-PT', { maximumFractionDigits: 2 })} km` : 'Não incluída') : '—';
         const allocatedCell = document.createElement('td');
@@ -1399,9 +1407,9 @@
         const weightCell = document.createElement('td');
         weightCell.dataset.distanceWeight = 'true';
         weightCell.textContent = totalRouteKm && detail
-          ? percent.format(weights[index] / totalRouteKm)
+          ? (includeReturn ? `${routePercent.format(outboundShare / totalRouteKm)} + ${routePercent.format(detail.returnKm / totalRouteKm)} = ${routePercent.format(weights[index] / totalRouteKm)}` : routePercent.format(weights[index] / totalRouteKm))
           : '—';
-        row.append(postalCell, tripsCell, kmCell, returnCell, allocatedCell, weightCell);
+        row.append(postalCell, tripsCell, kmCell, outboundCell, returnCell, allocatedCell, weightCell);
         tbody.appendChild(row);
       });
       if (selected.length) {
@@ -1414,7 +1422,7 @@
         const returnDistance = document.createElement('td');
         returnDistance.textContent = detail ? `${detail.returnTotalKm.toLocaleString('pt-PT', { maximumFractionDigits: 2 })} km` : '—';
         const returnRule = document.createElement('td');
-        returnRule.colSpan = 3;
+        returnRule.colSpan = 4;
         returnRule.textContent = detail
           ? (includeReturn ? `÷ ${selected.length} destinos = ${detail.returnKm.toLocaleString('pt-PT', { maximumFractionDigits: 2 })} km por destino (incluídos acima).` : 'Regresso apresentado para informação; excluído desta simulação.')
           : `A dividir igualmente pelos ${selected.length} destinos.`;
@@ -1668,11 +1676,16 @@
     function routeAllocationLabel() {
       return routeExpenseMode() === 'outbound'
         ? 'Repartido só pelos km do troço de chegada (sem regresso)'
-        : 'Repartido pelo troço de cada venda + quota igual do regresso';
+        : 'Troços comuns divididos pelas entregas restantes + regresso dividido por todos os destinos';
     }
 
     function routeSimulationWeights(details, mode) {
-      return details.map(detail => detail ? Math.max(0, number(detail.inboundKm)) + (mode === 'return' ? Math.max(0, number(detail.returnKm)) : 0) : 0);
+      if (mode !== 'return') return details.map(detail => Math.max(0, number(detail?.inboundKm)));
+      let sharedOutbound = 0;
+      return details.map((detail, index) => {
+        sharedOutbound += Math.max(0, number(detail?.inboundKm)) / (details.length - index);
+        return sharedOutbound + Math.max(0, number(detail?.returnKm));
+      });
     }
 
     function currentRouteWeights(selected) {
@@ -1701,7 +1714,50 @@
       });
     }
 
-    function reallocateGroupExpense(expenseId) {
+    function routeExpenseReview(selected) {
+      const weights = currentRouteWeights(selected);
+      const ready = weights.some(km => km > 0);
+      const ids = new Set(selected.flatMap(entry => (entry.groupExpenses || [])
+        .filter(item => item.groupExpenseId && /troço|\bkm\b/i.test(item.groupExpenseAllocation || ''))
+        .map(item => item.groupExpenseId)));
+      const items = [...ids].map(expenseId => {
+        const portions = entries.flatMap(entry => (entry.groupExpenses || []).filter(item => item.groupExpenseId === expenseId).map(item => ({ entry, item })));
+        const outside = portions.some(part => !selected.some(entry => entry.id === part.entry.id));
+        const totalCents = portions.reduce((sum, part) => sum + Math.round(number(part.item.value) * 100), 0);
+        const expected = ready && !outside ? allocateGroupCostCents(totalCents, selected, 'distance', weights) : [];
+        const mismatch = !ready || outside || expected.some(part => {
+          const actual = portions.filter(portion => portion.entry.id === part.entry.id);
+          return actual.reduce((sum, portion) => sum + Math.round(number(portion.item.value) * 100), 0) !== part.cents
+            || actual.some(portion => portion.item.groupExpenseAllocation !== routeAllocationLabel());
+        });
+        return { expenseId, outside, mismatch };
+      });
+      return { ready, items, consistent: items.every(item => !item.mismatch) };
+    }
+
+    function renderRouteExpenseCheck(selected) {
+      const review = routeExpenseReview(selected);
+      const pending = review.items.filter(item => item.mismatch).length;
+      const text = !review.items.length ? 'Sem despesas por km aplicadas; os pesos apresentados são uma simulação.'
+        : !review.ready ? 'Calcule a rota para verificar as despesas por km antes de imprimir.'
+        : review.items.some(item => item.outside) ? 'Selecione também as restantes faturas destas despesas antes de atualizar e imprimir.'
+        : pending ? `${pending} despesa(s) por km ainda não correspondem aos pesos escolhidos. Use «Aplicar pesos a todas as despesas por km» antes de imprimir.`
+        : 'Verificado: as despesas por km aplicadas correspondem aos pesos apresentados, com acerto de cêntimos.';
+      setPrintText('routeExpenseCheck', text);
+      document.getElementById('applyAllRouteExpenses').disabled = !review.ready || !pending || review.items.some(item => item.outside);
+      return review;
+    }
+
+    function applyAllRouteExpenses() {
+      const review = renderRouteExpenseCheck(selectedRouteEntries());
+      if (!review.ready || review.items.some(item => item.outside)) return;
+      const pending = review.items.filter(item => item.mismatch);
+      pending.forEach(item => reallocateGroupExpense(item.expenseId, false));
+      render();
+      document.getElementById('groupCostStatus').textContent = `${pending.length} despesa(s) por km atualizada(s), sem duplicar valores. Despesas individuais mantidas; margens recalculadas.`;
+    }
+
+    function reallocateGroupExpense(expenseId, refresh = true) {
       const selected = selectedRouteEntries();
       const weights = currentRouteWeights(selected);
       const status = document.getElementById('groupCostStatus');
@@ -1722,7 +1778,7 @@
         if (part.cents > 0) entry.groupExpenses.push({ ...sample, value: (part.cents / 100).toFixed(2), groupExpenseAllocation: allocation });
       });
       selected.forEach(entry => saveEntries(entry));
-      render();
+      if (refresh) render();
       status.textContent = 'Repartição substituída, sem duplicar a despesa. Total mantido; margens por fatura atualizadas.';
     }
 
@@ -2014,6 +2070,7 @@
       renderDistanceWeighting(selected);
       syncGroupCostsEditor(selected);
       renderCombinedExpenseSummary(selected);
+      renderRouteExpenseCheck(selected);
     }
 
     function fitCombinedSheetToA4() {
@@ -2037,6 +2094,10 @@
     async function printCombinedEntries() {
       if (selectedIds.size < 2) return;
       renderCombinedPreview();
+      if (!renderRouteExpenseCheck(selectedRouteEntries()).consistent) {
+        document.getElementById('routeExpenseCheck').scrollIntoView({ behavior: 'smooth', block: 'center' });
+        return;
+      }
       document.getElementById('combinedPrintSheet').setAttribute('aria-hidden', 'false');
       document.body.classList.add('print-combined');
       fitCombinedSheetToA4();
@@ -2175,6 +2236,7 @@
       document.querySelector('#groupCostRows .group-cost-row:last-child .group-cost-description')?.focus();
     });
     document.getElementById('applyGroupCosts').addEventListener('click', applyGroupCosts);
+    document.getElementById('applyAllRouteExpenses').addEventListener('click', applyAllRouteExpenses);
     document.querySelectorAll('input[name="routeExpenseMode"]').forEach(input => {
       input.addEventListener('change', () => {
         renderCombinedPreview();
