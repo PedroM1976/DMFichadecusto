@@ -3,7 +3,8 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Folha de custos de envios</title>
+  <title>Folha de cálculo de custos — Venda, Transporte e Assistência</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="">
   <style>
     :root {
       --black: #171717;
@@ -223,6 +224,26 @@
     .combined-table td:first-child { text-align: left; font-weight: 700; }
     .combined-table tfoot td { color: #171717; background: #f3d683; font-weight: 900; }
     .combined-results { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 12px; }
+    .combined-average-strip { display: grid; grid-template-columns: repeat(4, 1fr); margin-top: 8px; overflow: hidden; background: #edf3f8; border: 1px solid #cfd8e3; border-radius: 7px; }
+    .combined-average-strip span { padding: 7px 9px; border-right: 1px solid #cfd8e3; color: #4b5565; font-size: 9px; text-transform: uppercase; }
+    .combined-average-strip span:last-child { border-right: 0; }
+    .combined-average-strip b { display: block; margin-top: 2px; color: #171717; font-size: 12px; }
+    .group-costs-panel { margin-top: 12px; padding: 10px 12px; background: #fffaf0; border: 1px solid #ead79e; border-radius: 8px; }
+    .group-costs-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 8px; }
+    .group-costs-head h3 { margin: 0; font-size: 13px; }
+    .group-costs-head p { margin: 2px 0 0; color: #667085; font-size: 10px; }
+    .group-cost-row { display: grid; grid-template-columns: minmax(150px, 1.2fr) 145px 120px minmax(200px, 1fr) 38px; gap: 7px; margin-bottom: 7px; }
+    .group-cost-row input, .group-cost-row select { min-width: 0; padding: 7px 8px; color: #171717; background: white; border: 1px solid #d8c47e; border-radius: 6px; font: inherit; font-size: 11px; }
+    .group-cost-row .group-cost-value { text-align: right; }
+    .group-cost-row .remove-group-cost { width: 38px; padding: 0; color: var(--red); border-color: #f1c7c3; }
+    .group-cost-actions { display: flex; align-items: center; justify-content: flex-end; gap: 12px; margin-top: 7px; }
+    .group-cost-actions .group-cost-draft-total { margin-right: auto; font-size: 11px; font-weight: 900; }
+    .group-cost-status { min-height: 16px; color: #667085; font-size: 10px; }
+    .combined-expense-summary { margin-top: 8px; padding-top: 7px; border-top: 1px solid #ead79e; font-size: 10px; }
+    .combined-expense-summary h4 { margin: 0 0 4px; font-size: 11px; }
+    .combined-expense-line { display: flex; align-items: center; gap: 8px; padding: 3px 0; }
+    .combined-expense-line span { flex: 1; }
+    .combined-expense-line button { padding: 2px 6px; color: var(--red); border-color: #f1c7c3; font-size: 9px; }
     .distance-panel { margin-top: 12px; padding: 10px 12px; background: #f7f7f7; border: 1px solid #d9dde3; border-radius: 8px; }
     .distance-head { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 8px; }
     .distance-head h3 { margin: 0; font-size: 13px; }
@@ -237,6 +258,11 @@
     .distance-status { min-height: 17px; margin-top: 6px; color: #667085; font-size: 10px; }
     .distance-attribution { margin: 3px 0 0; color: #7b8190; font-size: 9px; }
     .distance-attribution a { color: inherit; }
+    .route-map-wrap { margin-top: 9px; }
+    .route-map-title { display: flex; justify-content: space-between; gap: 12px; margin-bottom: 5px; font-size: 11px; font-weight: 900; }
+    #combinedRouteMap { height: 220px; overflow: hidden; background: #e8edf2; border: 1px solid #cfd4dc; border-radius: 8px; }
+    .route-map-empty { height: 100%; display: grid; place-items: center; padding: 20px; color: #667085; text-align: center; }
+    .route-marker { display: grid; place-items: center; width: 26px; height: 26px; color: white; background: #171717; border: 3px solid #e8b93f; border-radius: 50%; box-shadow: 0 2px 7px rgba(0,0,0,.32); font-size: 11px; font-weight: 900; }
     .other-cost-inline { min-width: 116px; }
     .other-cost-inline strong { display: block; }
     .other-cost-inline button { margin-top: 4px; padding: 3px 6px; color: #8b6810; border-color: #d4b354; font-size: 10px; }
@@ -330,6 +356,10 @@
       .summary { grid-template-columns: repeat(2, minmax(130px, 1fr)); }
       .hint { align-items: flex-start; flex-direction: column; }
       .cost-fields { grid-template-columns: 1fr; }
+      .group-cost-row { grid-template-columns: 1fr 110px 38px; }
+      .group-cost-row .group-cost-category { grid-column: 1 / 2; grid-row: 2; }
+      .group-cost-row .group-cost-target { grid-column: 1 / 3; grid-row: 3; }
+      .group-cost-actions { align-items: stretch; flex-direction: column; }
     }
 
     @media print {
@@ -338,6 +368,7 @@
       body { background: white; }
       .page { width: 100%; margin: 0; padding: 0; border: 0; box-shadow: none; }
       .actions, .delete, th:last-child, td.remove, .hint button, .distance-origin button { display: none !important; }
+      .group-cost-editor, .combined-expense-line button { display: none !important; }
       .summary { grid-template-columns: repeat(4, 1fr); }
       .table-wrap { overflow: visible; border: 0; }
       table { min-width: 0; font-size: 9px; }
@@ -351,6 +382,8 @@
       body.print-combined { min-height: 0; }
       .print-document { width: 188mm; max-height: 275mm; overflow: hidden; page: single; }
       #combinedPrintSheet { width: 277mm; max-height: 190mm; page: combined; }
+      #combinedRouteMap { height: 32mm; }
+      .leaflet-control-container { display: none !important; }
     }
   </style>
 </head>
@@ -359,8 +392,8 @@
     <header>
       <img id="brandLogo" class="logo" alt="Domingos & Morgado">
       <div>
-        <h1>Folha de custos de envios de cargas</h1>
-        <p class="subtitle">Venda, compra e custos organizados por fases</p>
+        <h1>Folha de cálculo de custos</h1>
+        <p class="subtitle">Venda, transporte e assistência</p>
       </div>
       <div class="actions">
         <span id="syncStatus" class="sync-status online">Supabase ligado</span>
@@ -441,7 +474,7 @@
   <section id="printSheet" class="print-document" aria-hidden="true">
     <div class="print-header">
       <img id="printLogo" class="print-logo" alt="Domingos & Morgado">
-      <div><h1>Folha de custos do envio</h1><p>Detalhe de venda, compra, custos e margem</p></div>
+      <div><h1>Folha de cálculo de custos</h1><p>Venda, transporte e assistência</p></div>
     </div>
     <div class="print-meta">
       <div class="print-item"><small>Data</small><strong id="pDate">—</strong></div>
@@ -496,7 +529,7 @@
   <section id="combinedPrintSheet" class="print-document" aria-hidden="true">
     <div class="print-header">
       <img id="combinedPrintLogo" class="print-logo" alt="Domingos & Morgado">
-      <div><h1>Folha de custos conjunta</h1><p>Resumo de várias saídas numa única folha</p></div>
+      <div><h1>Folha de cálculo de custos conjunta</h1><p>Venda, transporte e assistência</p></div>
     </div>
     <div class="combined-meta">
       <span id="combinedCount">0 saídas selecionadas</span>
@@ -511,9 +544,24 @@
       <tbody id="combinedRows"></tbody>
       <tfoot><tr id="combinedTotals"></tr></tfoot>
     </table>
+    <div class="group-costs-panel">
+      <div class="group-cost-editor">
+        <div class="group-costs-head">
+          <div><h3>Despesas e retomas do grupo</h3><p>Direcione cada valor para uma fatura/envio ou reparta-o pelo grupo.</p></div>
+          <button id="addGroupCost" type="button">Adicionar despesa</button>
+        </div>
+        <div id="groupCostRows"></div>
+        <div class="group-cost-actions">
+          <span class="group-cost-draft-total">Total a aplicar: <b id="groupCostDraftTotal">€0,00</b></span>
+          <button id="applyGroupCosts" class="primary" type="button">Aplicar às faturas/envios</button>
+        </div>
+        <div id="groupCostStatus" class="group-cost-status"></div>
+      </div>
+      <div id="combinedExpenseSummary" class="combined-expense-summary"></div>
+    </div>
     <div class="distance-panel">
       <div class="distance-head">
-        <h3>Ponderação das deslocações</h3>
+        <h3>Rota e médias das deslocações</h3>
         <div class="distance-origin">
           <label>Origem <input id="combinedOrigin" type="text" value="Maia"></label>
           <label>Código postal <input id="combinedOriginPostalCode" type="text" placeholder="0000-000"></label>
@@ -521,14 +569,19 @@
         </div>
       </div>
       <table class="distance-table">
-        <thead><tr><th>Destino</th><th>Código postal</th><th>Distância ida e volta (km)</th><th>N.º deslocações</th><th>Peso total (km)</th></tr></thead>
+        <thead><tr><th>Destino</th><th>Código postal</th><th>Referência Maia ↔ destino (km)</th><th>N.º deslocações</th><th>Peso total (km)</th></tr></thead>
         <tbody id="distanceRows"></tbody>
       </table>
       <div class="distance-summary">
         <span>Total: <b id="distanceTotal">0 km</b></span>
+        <span>Média aritmética: <b id="distanceArithmeticAverage">—</b></span>
         <span>Média ponderada: <b id="distanceWeightedAverage">—</b></span>
       </div>
       <div id="distanceStatus" class="distance-status"></div>
+      <div class="route-map-wrap">
+        <div class="route-map-title"><span>Mapa da rota conjunta</span><span id="combinedRouteLabel">Maia → destinos → Maia</span></div>
+        <div id="combinedRouteMap"><div class="route-map-empty">Calcule pelos códigos postais para desenhar a rota.</div></div>
+      </div>
       <p class="distance-attribution">Distâncias: © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap contributors</a>; cálculo de rota por OSRM. Pode sempre corrigir os km manualmente.</p>
     </div>
     <div class="combined-results">
@@ -536,6 +589,12 @@
       <div class="print-result"><span>Custo total</span><b id="combinedCost">€0,00</b></div>
       <div class="print-result highlight"><span>Margem total</span><b id="combinedMargin">€0,00</b></div>
       <div class="print-result highlight"><span>Margem global</span><b id="combinedMarginPct">—</b></div>
+    </div>
+    <div class="combined-average-strip">
+      <span>Média mão de obra<b id="combinedAverageLabor">€0,00</b></span>
+      <span>Média deslocação<b id="combinedAverageTravel">€0,00</b></span>
+      <span>Média transporte<b id="combinedAverageFreight">€0,00</b></span>
+      <span>Custo médio por fatura/envio<b id="combinedAverageCost">€0,00</b></span>
     </div>
   </section>
 
@@ -581,6 +640,7 @@
   </dialog>
 
   <script src="dm-logo.js"></script>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
   <script>
     'use strict';
 
@@ -595,7 +655,7 @@
     const ORIGIN_POSTAL_KEY = 'dm_folha_custos_origem_cp_v1';
     const money = new Intl.NumberFormat('pt-PT', { style: 'currency', currency: 'EUR' });
     const percent = new Intl.NumberFormat('pt-PT', { style: 'percent', minimumFractionDigits: 1, maximumFractionDigits: 1 });
-    const fields = ['date', 'invoice', 'destination', 'description', 'carrier', 'sales', 'productCost', 'freight', 'labor', 'travel', 'operations', 'commissionRate', 'otherCosts', 'otherCostItems', 'originPostalCode', 'postalCode', 'distanceKm', 'tripCount', 'notes'];
+    const fields = ['date', 'invoice', 'destination', 'description', 'carrier', 'sales', 'productCost', 'freight', 'labor', 'travel', 'operations', 'commissionRate', 'otherCosts', 'otherCostItems', 'groupExpenses', 'originPostalCode', 'postalCode', 'distanceKm', 'tripCount', 'notes'];
     const costEditor = document.getElementById('costEditor');
     const costInputs = ['editLabor', 'editTravel', 'editOperations', 'editCommission'];
     const syncTimers = new Map();
@@ -604,9 +664,13 @@
     const cloudSession = { access_token: SUPABASE_PUBLISHABLE_KEY };
     let editingCostId = null;
     let lastGeocodeRequest = 0;
+    let combinedRouteMap = null;
+    let combinedRouteLayer = null;
+    let combinedRouteMarkers = null;
+    let combinedRouteKey = '';
     const example = {
       id: crypto.randomUUID(), date: '', invoice: '', destination: '', description: 'Máquina', carrier: '',
-      sales: 4860, productCost: 3321, freight: 92.99, labor: '', travel: '', operations: '', commissionRate: '', otherCosts: '', otherCostItems: [], originPostalCode: '', postalCode: '', distanceKm: '', tripCount: 1, notes: ''
+      sales: 4860, productCost: 3321, freight: 92.99, labor: '', travel: '', operations: '', commissionRate: '', otherCosts: '', otherCostItems: [], groupExpenses: [], originPostalCode: '', postalCode: '', distanceKm: '', tripCount: 1, notes: ''
     };
 
     let entries = loadEntries();
@@ -675,8 +739,11 @@
         custo_deslocacao: number(entry.travel),
         outros_custos_operacionais: number(entry.operations),
         comissao_vendedor_percentagem: number(entry.commissionRate),
-        outros_custos: calculate(entry).otherCosts,
+        outros_custos: Array.isArray(entry.otherCostItems) && entry.otherCostItems.length
+          ? entry.otherCostItems.reduce((sum, item) => sum + number(item.value), 0)
+          : number(entry.otherCosts),
         outros_custos_detalhe: Array.isArray(entry.otherCostItems) ? entry.otherCostItems : [],
+        despesas_grupo_detalhe: Array.isArray(entry.groupExpenses) ? entry.groupExpenses : [],
         codigo_postal_origem: entry.originPostalCode || null,
         codigo_postal_destino: entry.postalCode || null,
         distancia_km: number(entry.distanceKm),
@@ -704,6 +771,7 @@
         commissionRate: row.comissao_vendedor_percentagem ?? '',
         otherCosts: row.outros_custos ?? '',
         otherCostItems: Array.isArray(row.outros_custos_detalhe) ? row.outros_custos_detalhe : [],
+        groupExpenses: Array.isArray(row.despesas_grupo_detalhe) ? row.despesas_grupo_detalhe : [],
         originPostalCode: row.codigo_postal_origem || '',
         postalCode: row.codigo_postal_destino || '',
         distanceKm: row.distancia_km ?? '',
@@ -793,20 +861,24 @@
     function calculate(entry) {
       const sales = number(entry.sales);
       const productCost = number(entry.productCost);
-      const freight = number(entry.freight);
-      const labor = number(entry.labor);
-      const travel = number(entry.travel);
-      const operations = number(entry.operations);
+      const groupExpenses = Array.isArray(entry.groupExpenses) ? entry.groupExpenses : [];
+      const groupTotal = category => groupExpenses
+        .filter(item => item.category === category)
+        .reduce((sum, item) => sum + number(item.value), 0);
+      const freight = number(entry.freight) + groupTotal('freight');
+      const labor = number(entry.labor) + groupTotal('labor');
+      const travel = number(entry.travel) + groupTotal('travel');
+      const operations = number(entry.operations) + groupTotal('operations');
       const commissionRate = number(entry.commissionRate) / 100;
       const commission = sales * commissionRate;
       const otherCostItems = Array.isArray(entry.otherCostItems) ? entry.otherCostItems : [];
       const itemizedOtherCosts = otherCostItems.reduce((sum, item) => sum + number(item.value), 0);
-      const otherCosts = otherCostItems.length ? itemizedOtherCosts : number(entry.otherCosts);
+      const otherCosts = (otherCostItems.length ? itemizedOtherCosts : number(entry.otherCosts)) + groupTotal('other');
       const operationalTotal = labor + travel + operations;
       const totalCost = productCost + freight + operationalTotal + commission + otherCosts;
       const margin = sales - totalCost;
       return {
-        sales, productCost, freight, labor, travel, operations, operationalTotal, commissionRate, commission, otherCostItems, otherCosts, totalCost, margin,
+        sales, productCost, freight, labor, travel, operations, operationalTotal, commissionRate, commission, otherCostItems, groupExpenses, otherCosts, totalCost, margin,
         freightPct: sales ? freight / sales : null,
         laborPct: sales ? labor / sales : null,
         travelPct: sales ? travel / sales : null,
@@ -983,7 +1055,7 @@
     }
 
     function blankEntry() {
-      return { id: crypto.randomUUID(), date: '', invoice: '', destination: '', description: '', carrier: '', sales: '', productCost: '', freight: '', labor: '', travel: '', operations: '', commissionRate: '', otherCosts: '', otherCostItems: [], originPostalCode: '', postalCode: '', distanceKm: '', tripCount: 1, notes: '' };
+      return { id: crypto.randomUUID(), date: '', invoice: '', destination: '', description: '', carrier: '', sales: '', productCost: '', freight: '', labor: '', travel: '', operations: '', commissionRate: '', otherCosts: '', otherCostItems: [], groupExpenses: [], originPostalCode: '', postalCode: '', distanceKm: '', tripCount: 1, notes: '' };
     }
 
     function openCostEditor(id) {
@@ -1001,10 +1073,13 @@
       document.getElementById('editLabor').focus();
     }
 
-    function addOtherCostEditorRow(description = '', value = '') {
+    function addOtherCostEditorRow(description = '', value = '', metadata = {}) {
       const container = document.getElementById('otherCostItemsEditor');
       const row = document.createElement('div');
       row.className = 'other-cost-row';
+      if (metadata.groupExpenseId) row.dataset.groupExpenseId = metadata.groupExpenseId;
+      if (metadata.groupExpenseLabel) row.dataset.groupExpenseLabel = metadata.groupExpenseLabel;
+      if (metadata.groupExpenseAllocation) row.dataset.groupExpenseAllocation = metadata.groupExpenseAllocation;
 
       const descriptionInput = document.createElement('input');
       descriptionInput.type = 'text';
@@ -1041,16 +1116,22 @@
         ? entry.otherCostItems
         : number(entry.otherCosts) > 0
           ? [{ description: 'Outros custos', value: entry.otherCosts }]
-          : [{ description: 'Gasolina', value: '' }, { description: 'Portagens', value: '' }];
-      items.forEach(item => addOtherCostEditorRow(item.description || '', item.value ?? ''));
+          : [{ description: 'Gasolina', value: '' }, { description: 'Portagens', value: '' }, { description: 'Retoma', value: '' }];
+      items.forEach(item => addOtherCostEditorRow(item.description || '', item.value ?? '', item));
     }
 
     function readOtherCostItems() {
       return [...document.querySelectorAll('#otherCostItemsEditor .other-cost-row')]
-        .map(row => ({
-          description: row.querySelector('.other-cost-description').value.trim(),
-          value: row.querySelector('.other-cost-value').value,
-        }))
+        .map(row => {
+          const item = {
+            description: row.querySelector('.other-cost-description').value.trim(),
+            value: row.querySelector('.other-cost-value').value,
+          };
+          if (row.dataset.groupExpenseId) item.groupExpenseId = row.dataset.groupExpenseId;
+          if (row.dataset.groupExpenseLabel) item.groupExpenseLabel = row.dataset.groupExpenseLabel;
+          if (row.dataset.groupExpenseAllocation) item.groupExpenseAllocation = row.dataset.groupExpenseAllocation;
+          return item;
+        })
         .filter(item => item.description || number(item.value) !== 0);
     }
 
@@ -1075,6 +1156,16 @@
       document.getElementById(id).textContent = value;
     }
 
+    function groupExpenseCategoryLabel(category) {
+      return ({
+        other: 'Retoma / outras despesas',
+        freight: 'Transporte',
+        labor: 'Mão de obra',
+        travel: 'Deslocação',
+        operations: 'Custos operacionais',
+      })[category] || 'Despesa';
+    }
+
     function printEntry(id) {
       const entry = entries.find(item => item.id === id);
       if (!entry) return;
@@ -1093,12 +1184,11 @@
       setPrintText('pCommissionRate', percent.format(result.commissionRate));
       setPrintText('pCommission', money.format(result.commission));
       setPrintText('pOtherCosts', money.format(result.otherCosts));
-      setPrintText(
-        'pOtherCostDetails',
-        result.otherCostItems.length
-          ? result.otherCostItems.map(item => `${item.description || 'Outro custo'}: ${money.format(number(item.value))}`).join(' • ')
-          : 'Sem custos adicionais discriminados.'
-      );
+      const costDetails = [
+        ...result.otherCostItems.map(item => `${item.description || 'Outro custo'}: ${money.format(number(item.value))}`),
+        ...result.groupExpenses.map(item => `${item.description || 'Despesa do grupo'} (${groupExpenseCategoryLabel(item.category)}): ${money.format(number(item.value))}`),
+      ];
+      setPrintText('pOtherCostDetails', costDetails.length ? costDetails.join(' • ') : 'Sem custos adicionais discriminados.');
       setPrintText('pTotalCost', money.format(result.totalCost));
       setPrintText('pFreightPct', result.freightPct === null ? '—' : percent.format(result.freightPct));
       setPrintText('pLaborPct', result.laborPct === null ? '—' : percent.format(result.laborPct));
@@ -1122,7 +1212,13 @@
     function updateDistanceSummary(selected) {
       const totalKm = selected.reduce((sum, entry) => sum + number(entry.distanceKm) * Math.max(1, Math.round(number(entry.tripCount) || 1)), 0);
       const totalTrips = selected.reduce((sum, entry) => sum + Math.max(1, Math.round(number(entry.tripCount) || 1)), 0);
+      const arithmeticKm = selected.length
+        ? selected.reduce((sum, entry) => sum + number(entry.distanceKm), 0) / selected.length
+        : 0;
       setPrintText('distanceTotal', `${totalKm.toLocaleString('pt-PT', { maximumFractionDigits: 1 })} km`);
+      setPrintText('distanceArithmeticAverage', arithmeticKm
+        ? `${arithmeticKm.toLocaleString('pt-PT', { maximumFractionDigits: 1 })} km por envio`
+        : '—');
       setPrintText('distanceWeightedAverage', totalTrips && totalKm
         ? `${(totalKm / totalTrips).toLocaleString('pt-PT', { maximumFractionDigits: 1 })} km por deslocação`
         : '—');
@@ -1172,6 +1268,8 @@
         tbody.appendChild(row);
       });
       updateDistanceSummary(selected);
+      const nextRouteKey = selected.map(entry => `${entry.id}:${entry.postalCode || ''}`).join('|');
+      if (combinedRouteKey && combinedRouteKey !== nextRouteKey) clearCombinedRouteMap();
     }
 
     function wait(milliseconds) {
@@ -1203,6 +1301,81 @@
       return Math.round(result.routes[0].distance * 2 / 100) / 10;
     }
 
+    function clearCombinedRouteMap(message = 'Calcule pelos códigos postais para desenhar a rota.') {
+      combinedRouteKey = '';
+      if (combinedRouteMap) {
+        combinedRouteMap.remove();
+        combinedRouteMap = null;
+        combinedRouteLayer = null;
+        combinedRouteMarkers = null;
+      }
+      const container = document.getElementById('combinedRouteMap');
+      container.replaceChildren();
+      const empty = document.createElement('div');
+      empty.className = 'route-map-empty';
+      empty.textContent = message;
+      container.appendChild(empty);
+      setPrintText('combinedRouteLabel', 'Maia → destinos → Maia');
+    }
+
+    function ensureCombinedRouteMap() {
+      if (!window.L) throw new Error('Não foi possível carregar o mapa.');
+      if (combinedRouteMap) return combinedRouteMap;
+      const container = document.getElementById('combinedRouteMap');
+      container.replaceChildren();
+      combinedRouteMap = L.map(container, { zoomControl: true, scrollWheelZoom: false });
+      L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        maxZoom: 19,
+        attribution: '&copy; OpenStreetMap contributors',
+      }).addTo(combinedRouteMap);
+      combinedRouteMarkers = L.layerGroup().addTo(combinedRouteMap);
+      return combinedRouteMap;
+    }
+
+    function routeMarkerIcon(label) {
+      return L.divIcon({
+        className: '',
+        html: `<div class="route-marker">${label}</div>`,
+        iconSize: [26, 26],
+        iconAnchor: [13, 13],
+      });
+    }
+
+    function renderCombinedRouteMap(points, labels, geometry, totalKm, routeKey) {
+      const map = ensureCombinedRouteMap();
+      if (combinedRouteLayer) combinedRouteLayer.remove();
+      combinedRouteMarkers.clearLayers();
+      combinedRouteLayer = L.geoJSON({ type: 'Feature', properties: {}, geometry }, {
+        style: { color: '#0868ac', weight: 5, opacity: 0.9 },
+      }).addTo(map);
+      points.slice(0, -1).forEach((point, index) => {
+        const markerLabel = index === 0 ? 'M' : String(index);
+        const popup = document.createElement('div');
+        const popupTitle = document.createElement('b');
+        popupTitle.textContent = index === 0 ? 'Origem' : `Paragem ${index}`;
+        popup.append(popupTitle, document.createElement('br'), document.createTextNode(labels[index]));
+        L.marker([point.lat, point.lon], { icon: routeMarkerIcon(markerLabel) })
+          .bindPopup(popup)
+          .addTo(combinedRouteMarkers);
+      });
+      map.fitBounds(combinedRouteLayer.getBounds(), { padding: [22, 22] });
+      setTimeout(() => map.invalidateSize(), 50);
+      combinedRouteKey = routeKey;
+      setPrintText('combinedRouteLabel', `${labels.join(' → ')} → ${labels[0]} · ${totalKm.toLocaleString('pt-PT', { maximumFractionDigits: 1 })} km`);
+    }
+
+    async function calculateCombinedRoute(points) {
+      const coordinates = points.map(point => `${point.lon},${point.lat}`).join(';');
+      const response = await fetch(`https://router.project-osrm.org/route/v1/driving/${coordinates}?overview=full&geometries=geojson&alternatives=false&steps=false`);
+      if (!response.ok) throw new Error('O serviço não conseguiu desenhar a rota conjunta.');
+      const result = await response.json();
+      if (result.code !== 'Ok' || !result.routes?.length) throw new Error('Não foi encontrada a rota conjunta.');
+      return {
+        geometry: result.routes[0].geometry,
+        distanceKm: Math.round(result.routes[0].distance / 100) / 10,
+      };
+    }
+
     async function calculatePostalDistances() {
       const selected = entries.filter(entry => selectedIds.has(entry.id));
       const originPostal = document.getElementById('combinedOriginPostalCode').value.trim();
@@ -1230,22 +1403,253 @@
       try {
         status.textContent = 'A localizar a origem…';
         const originPoint = await geocodePostalCode(originPostal);
+        const destinationPoints = [];
+        const routeLabels = [originName];
         for (let index = 0; index < selected.length; index += 1) {
           const entry = selected[index];
           status.textContent = `A calcular ${index + 1} de ${selected.length}: ${entry.destination || entry.description || 'destino'}…`;
           const destinationPoint = await geocodePostalCode(entry.postalCode);
+          destinationPoints.push(destinationPoint);
+          routeLabels.push(entry.destination || entry.description || entry.postalCode);
           entry.originPostalCode = originPostal;
           entry.distanceKm = await routeRoundTripKm(originPoint, destinationPoint);
           saveEntries(entry);
         }
         renderCombinedPreview();
-        status.textContent = 'Distâncias rodoviárias de ida e volta calculadas. Pode corrigir os valores manualmente.';
+        status.textContent = 'A desenhar a rota conjunta no mapa…';
+        const routePoints = [originPoint, ...destinationPoints, originPoint];
+        const combinedRoute = await calculateCombinedRoute(routePoints);
+        const routeKey = selected.map(entry => `${entry.id}:${entry.postalCode || ''}`).join('|');
+        renderCombinedRouteMap(routePoints, routeLabels, combinedRoute.geometry, combinedRoute.distanceKm, routeKey);
+        status.textContent = 'Distâncias e mapa da rota calculados. Pode corrigir os quilómetros manualmente.';
       } catch (error) {
         console.error(error);
         status.textContent = `${error.message} Pode preencher os quilómetros manualmente.`;
       } finally {
         button.disabled = false;
       }
+    }
+
+    function combinedEntryLabel(entry, index = 0) {
+      const detail = entry.destination || entry.description || `Envio ${index + 1}`;
+      return entry.invoice ? `Fatura ${entry.invoice} — ${detail}` : detail;
+    }
+
+    function populateGroupCostTarget(select, selected, preferred = '') {
+      select.replaceChildren();
+      selected.forEach((entry, index) => {
+        const option = document.createElement('option');
+        option.value = `entry:${entry.id}`;
+        option.textContent = combinedEntryLabel(entry, index);
+        select.appendChild(option);
+      });
+      const proportional = document.createElement('option');
+      proportional.value = 'proportional';
+      proportional.textContent = 'Repartir pelo PV das faturas';
+      const equal = document.createElement('option');
+      equal.value = 'equal';
+      equal.textContent = 'Repartir igualmente pelo grupo';
+      select.append(proportional, equal);
+      const values = [...select.options].map(option => option.value);
+      select.value = values.includes(preferred) ? preferred : (selected.length ? `entry:${selected[0].id}` : 'proportional');
+    }
+
+    function updateGroupCostDraftTotal() {
+      const total = [...document.querySelectorAll('#groupCostRows .group-cost-value')]
+        .reduce((sum, input) => sum + Math.max(0, number(input.value)), 0);
+      setPrintText('groupCostDraftTotal', money.format(total));
+    }
+
+    function addGroupCostRow(description = 'Retoma', value = '', target = '', category = 'other') {
+      const selected = entries.filter(entry => selectedIds.has(entry.id));
+      const row = document.createElement('div');
+      row.className = 'group-cost-row';
+
+      const descriptionInput = document.createElement('input');
+      descriptionInput.type = 'text';
+      descriptionInput.className = 'group-cost-description';
+      descriptionInput.placeholder = 'Retoma, gasolina, portagens…';
+      descriptionInput.value = description;
+
+      const categorySelect = document.createElement('select');
+      categorySelect.className = 'group-cost-category';
+      categorySelect.setAttribute('aria-label', 'Tipo de despesa');
+      [
+        ['other', 'Retoma / outras despesas'],
+        ['freight', 'Transporte'],
+        ['labor', 'Mão de obra'],
+        ['travel', 'Deslocação'],
+        ['operations', 'Custos operacionais'],
+      ].forEach(([optionValue, label]) => {
+        const option = document.createElement('option');
+        option.value = optionValue;
+        option.textContent = label;
+        categorySelect.appendChild(option);
+      });
+      categorySelect.value = category;
+
+      const valueInput = document.createElement('input');
+      valueInput.type = 'text';
+      valueInput.inputMode = 'decimal';
+      valueInput.className = 'group-cost-value numeric';
+      valueInput.placeholder = '0,00';
+      valueInput.value = value;
+      valueInput.addEventListener('input', updateGroupCostDraftTotal);
+
+      const targetSelect = document.createElement('select');
+      targetSelect.className = 'group-cost-target';
+      targetSelect.setAttribute('aria-label', 'Fatura ou envio que recebe a despesa');
+      populateGroupCostTarget(targetSelect, selected, target);
+
+      const remove = document.createElement('button');
+      remove.type = 'button';
+      remove.className = 'remove-group-cost';
+      remove.textContent = '×';
+      remove.title = 'Remover despesa';
+      remove.addEventListener('click', () => {
+        row.remove();
+        updateGroupCostDraftTotal();
+      });
+
+      row.append(descriptionInput, categorySelect, valueInput, targetSelect, remove);
+      document.getElementById('groupCostRows').appendChild(row);
+      updateGroupCostDraftTotal();
+    }
+
+    function syncGroupCostsEditor(selected) {
+      const container = document.getElementById('groupCostRows');
+      if (!container.children.length) addGroupCostRow('Retoma');
+      container.querySelectorAll('.group-cost-target').forEach(select => {
+        populateGroupCostTarget(select, selected, select.value);
+      });
+      document.getElementById('applyGroupCosts').disabled = !selected.length;
+      updateGroupCostDraftTotal();
+    }
+
+    function readGroupCostDrafts() {
+      return [...document.querySelectorAll('#groupCostRows .group-cost-row')]
+        .map(row => ({
+          description: row.querySelector('.group-cost-description').value.trim(),
+          category: row.querySelector('.group-cost-category').value,
+          value: Math.max(0, number(row.querySelector('.group-cost-value').value)),
+          target: row.querySelector('.group-cost-target').value,
+        }))
+        .filter(item => item.description && item.value > 0);
+    }
+
+    function allocateGroupCostCents(totalCents, selected, mode) {
+      const rawWeights = mode === 'proportional' ? selected.map(entry => Math.max(0, number(entry.sales))) : selected.map(() => 1);
+      const weightTotal = rawWeights.reduce((sum, weight) => sum + weight, 0);
+      const weights = weightTotal > 0 ? rawWeights : selected.map(() => 1);
+      const denominator = weights.reduce((sum, weight) => sum + weight, 0);
+      let used = 0;
+      return selected.map((entry, index) => {
+        const cents = index === selected.length - 1
+          ? totalCents - used
+          : Math.floor(totalCents * weights[index] / denominator);
+        used += cents;
+        return { entry, cents };
+      });
+    }
+
+    function appendAllocatedExpense(entry, description, category, cents, expenseId, allocation) {
+      if (cents <= 0) return;
+      if (!Array.isArray(entry.groupExpenses)) entry.groupExpenses = [];
+      entry.groupExpenses.push({
+        description,
+        category,
+        value: (cents / 100).toFixed(2),
+        groupExpenseId: expenseId,
+        groupExpenseLabel: description,
+        groupExpenseAllocation: allocation,
+      });
+      saveEntries(entry);
+    }
+
+    function applyGroupCosts() {
+      const selected = entries.filter(entry => selectedIds.has(entry.id));
+      const drafts = readGroupCostDrafts();
+      const status = document.getElementById('groupCostStatus');
+      if (!selected.length) {
+        status.textContent = 'Selecione as faturas ou envios que pertencem ao grupo.';
+        return;
+      }
+      if (!drafts.length) {
+        status.textContent = 'Indique a descrição e o valor de pelo menos uma despesa.';
+        return;
+      }
+
+      drafts.forEach(draft => {
+        const expenseId = crypto.randomUUID();
+        const totalCents = Math.round(draft.value * 100);
+        if (draft.target.startsWith('entry:')) {
+          const entry = selected.find(item => item.id === draft.target.slice(6));
+          if (entry) appendAllocatedExpense(entry, draft.description, draft.category, totalCents, expenseId, combinedEntryLabel(entry));
+          return;
+        }
+        const allocation = draft.target === 'proportional' ? 'Repartido pelo PV das faturas' : 'Repartido igualmente pelo grupo';
+        allocateGroupCostCents(totalCents, selected, draft.target)
+          .forEach(part => appendAllocatedExpense(part.entry, draft.description, draft.category, part.cents, expenseId, allocation));
+      });
+
+      document.getElementById('groupCostRows').replaceChildren();
+      render();
+      status.textContent = `${drafts.length} despesa(s) aplicada(s) às faturas/envios e incluída(s) na margem.`;
+    }
+
+    function removeGroupExpense(expenseId) {
+      entries.forEach(entry => {
+        if (!Array.isArray(entry.groupExpenses)) return;
+        const next = entry.groupExpenses.filter(item => item.groupExpenseId !== expenseId);
+        if (next.length === entry.groupExpenses.length) return;
+        entry.groupExpenses = next;
+        saveEntries(entry);
+      });
+      render();
+      document.getElementById('groupCostStatus').textContent = 'Despesa retirada das faturas/envios.';
+    }
+
+    function renderCombinedExpenseSummary(selected) {
+      const summary = document.getElementById('combinedExpenseSummary');
+      summary.replaceChildren();
+      const title = document.createElement('h4');
+      title.textContent = 'Despesas do grupo aplicadas às faturas/envios';
+      summary.appendChild(title);
+
+      const grouped = new Map();
+      selected.forEach(entry => {
+        (Array.isArray(entry.groupExpenses) ? entry.groupExpenses : []).forEach(item => {
+          if (!item.groupExpenseId) return;
+          const current = grouped.get(item.groupExpenseId) || {
+            label: item.groupExpenseLabel || item.description || 'Despesa',
+            category: item.category || 'other',
+            allocation: item.groupExpenseAllocation || 'Fatura/envio',
+            value: 0,
+          };
+          current.value += number(item.value);
+          grouped.set(item.groupExpenseId, current);
+        });
+      });
+
+      if (!grouped.size) {
+        const empty = document.createElement('div');
+        empty.textContent = 'Sem despesas de grupo aplicadas.';
+        summary.appendChild(empty);
+        return;
+      }
+
+      grouped.forEach((item, expenseId) => {
+        const line = document.createElement('div');
+        line.className = 'combined-expense-line';
+        const text = document.createElement('span');
+        text.textContent = `${item.label} · ${groupExpenseCategoryLabel(item.category)}: ${money.format(item.value)} → ${item.allocation}`;
+        const remove = document.createElement('button');
+        remove.type = 'button';
+        remove.textContent = 'Retirar';
+        remove.addEventListener('click', () => removeGroupExpense(expenseId));
+        line.append(text, remove);
+        summary.appendChild(line);
+      });
     }
 
     function renderCombinedPreview() {
@@ -1278,6 +1682,13 @@
       setPrintText('combinedCost', money.format(totals.totalCost));
       setPrintText('combinedMargin', money.format(totals.margin));
       setPrintText('combinedMarginPct', totals.sales ? percent.format(totals.margin / totals.sales) : '—');
+      const divisor = selected.length || 1;
+      setPrintText('combinedAverageLabor', money.format(totals.labor / divisor));
+      setPrintText('combinedAverageTravel', money.format(totals.travel / divisor));
+      setPrintText('combinedAverageFreight', money.format(totals.freight / divisor));
+      setPrintText('combinedAverageCost', money.format(totals.totalCost / divisor));
+      syncGroupCostsEditor(selected);
+      renderCombinedExpenseSummary(selected);
       renderDistanceWeighting(selected);
     }
 
@@ -1357,11 +1768,12 @@
     }
 
     function exportCsv() {
-      const headers = ['Data', 'N.º da fatura', 'Cliente / destino', 'Descrição', 'Transportadora', 'PV / valor de venda', 'Preço de compra', 'Transporte', 'Mão de obra', 'Deslocação', 'Outros custos operacionais', 'Comissão do vendedor (%)', 'Valor da comissão', 'Detalhe de outros custos', 'Outros custos', 'Custo total', 'Transporte / PV', 'Mão de obra / PV', 'Deslocação / PV', 'Comissão / PV', 'Outros custos / PV', 'Margem', 'Margem %', 'Código postal de origem', 'Código postal do destino', 'Distância ida e volta (km)', 'N.º deslocações', 'Observações'];
+      const headers = ['Data', 'N.º da fatura', 'Cliente / destino', 'Descrição', 'Transportadora', 'PV / valor de venda', 'Preço de compra', 'Transporte', 'Mão de obra', 'Deslocação', 'Outros custos operacionais', 'Comissão do vendedor (%)', 'Valor da comissão', 'Detalhe de outros custos', 'Despesas do grupo atribuídas', 'Outros custos', 'Custo total', 'Transporte / PV', 'Mão de obra / PV', 'Deslocação / PV', 'Comissão / PV', 'Outros custos / PV', 'Margem', 'Margem %', 'Código postal de origem', 'Código postal do destino', 'Distância ida e volta (km)', 'N.º deslocações', 'Observações'];
       const rows = entries.map(entry => {
         const result = calculate(entry);
         const otherCostDetail = result.otherCostItems.map(item => `${item.description || 'Outro custo'}: ${money.format(number(item.value))}`).join(' | ');
-        return [entry.date, entry.invoice, entry.destination, entry.description, entry.carrier, result.sales, result.productCost, result.freight, result.labor, result.travel, result.operations, number(entry.commissionRate), result.commission, otherCostDetail, result.otherCosts, result.totalCost, result.freightPct ?? '', result.laborPct ?? '', result.travelPct ?? '', result.commissionPct ?? '', result.otherCostsPct ?? '', result.margin, result.marginPct ?? '', entry.originPostalCode, entry.postalCode, number(entry.distanceKm), Math.max(1, Math.round(number(entry.tripCount) || 1)), entry.notes];
+        const groupCostDetail = result.groupExpenses.map(item => `${item.description || 'Despesa'} (${groupExpenseCategoryLabel(item.category)}): ${money.format(number(item.value))}`).join(' | ');
+        return [entry.date, entry.invoice, entry.destination, entry.description, entry.carrier, result.sales, result.productCost, result.freight, result.labor, result.travel, result.operations, number(entry.commissionRate), result.commission, otherCostDetail, groupCostDetail, result.otherCosts, result.totalCost, result.freightPct ?? '', result.laborPct ?? '', result.travelPct ?? '', result.commissionPct ?? '', result.otherCostsPct ?? '', result.margin, result.marginPct ?? '', entry.originPostalCode, entry.postalCode, number(entry.distanceKm), Math.max(1, Math.round(number(entry.tripCount) || 1)), entry.notes];
       });
       const csv = '\uFEFF' + [headers, ...rows].map(row => row.map(csvCell).join(';')).join('\r\n');
       const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
@@ -1390,6 +1802,11 @@
       document.querySelector('#rows tr:last-child input')?.focus();
     });
     document.getElementById('printCombined').addEventListener('click', printCombinedEntries);
+    document.getElementById('addGroupCost').addEventListener('click', () => {
+      addGroupCostRow('');
+      document.querySelector('#groupCostRows .group-cost-row:last-child .group-cost-description')?.focus();
+    });
+    document.getElementById('applyGroupCosts').addEventListener('click', applyGroupCosts);
     document.getElementById('combinedOrigin').addEventListener('input', event => localStorage.setItem(ORIGIN_KEY, event.target.value));
     document.getElementById('combinedOriginPostalCode').addEventListener('input', event => localStorage.setItem(ORIGIN_POSTAL_KEY, event.target.value));
     document.getElementById('calculatePostalDistances').addEventListener('click', calculatePostalDistances);
