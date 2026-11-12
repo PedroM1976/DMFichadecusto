@@ -368,7 +368,7 @@
       body { background: white; }
       .page { width: 100%; margin: 0; padding: 0; border: 0; box-shadow: none; }
       .actions, .delete, .table-wrap th:last-child, td.remove, .hint button, .distance-origin button { display: none !important; }
-      .group-cost-editor, .combined-expense-line button { display: none !important; }
+      .group-cost-editor, .combined-expense-line button, .route-order-button { display: none !important; }
       .summary { grid-template-columns: repeat(4, 1fr); }
       .table-wrap { overflow: visible; border: 0; }
       table { min-width: 0; font-size: 9px; }
@@ -581,20 +581,21 @@
         </div>
       </div>
       <table class="distance-table">
-        <thead><tr><th>Destino</th><th>Código postal</th><th>Referência Maia ↔ destino (km)</th><th>N.º deslocações</th><th>Peso total (km)</th></tr></thead>
+        <thead><tr><th>Ordem / fatura / destino</th><th>Código postal</th><th>Km atribuídos (último inclui regresso)</th><th>Troço / regresso</th><th>Peso na despesa</th></tr></thead>
         <tbody id="distanceRows"></tbody>
       </table>
       <div class="distance-summary">
-        <span>Total: <b id="distanceTotal">0 km</b></span>
+        <span>Total da rota, com regresso: <b id="distanceTotal">0 km</b></span>
         <span>Média aritmética: <b id="distanceArithmeticAverage">—</b></span>
-        <span>Média ponderada: <b id="distanceWeightedAverage">—</b></span>
+        <span hidden>Média ponderada: <b id="distanceWeightedAverage">—</b></span>
       </div>
       <div id="distanceStatus" class="distance-status"></div>
+      <p class="distance-attribution">Ordem indicada abaixo: origem → destinos → origem. O regresso é atribuído ao último destino. Gasóleo e portagens: valor total × km atribuídos ao destino ÷ km totais da rota. Use ↑ e ↓ para ordenar e volte a calcular antes de aplicar despesas.</p>
       <div class="route-map-wrap">
         <div class="route-map-title"><span>Mapa da rota conjunta</span><span id="combinedRouteLabel">Maia → destinos → Maia</span></div>
         <div id="combinedRouteMap"><div class="route-map-empty">Calcule pelos códigos postais para desenhar a rota.</div></div>
       </div>
-      <p class="distance-attribution">Códigos postais: GEO API PT; distâncias: © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap contributors</a>; cálculo de rota por OSRM. Pode sempre corrigir os km manualmente.</p>
+      <p class="distance-attribution">Códigos postais: GEO API PT; distâncias: © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap contributors</a>; cálculo de rota por OSRM. Distâncias estimadas por estrada.</p>
     </div>
   </section>
 
@@ -668,6 +669,27 @@
     let combinedRouteLayer = null;
     let combinedRouteMarkers = null;
     let combinedRouteKey = '';
+    let calculatedDistanceKey = '';
+    const routeDetails = new Map();
+
+    function selectedRouteEntries() {
+      return [...selectedIds].map(id => entries.find(entry => entry.id === id)).filter(Boolean);
+    }
+
+    function distanceRouteKey() {
+      return JSON.stringify([document.getElementById('combinedOriginPostalCode').value.trim(),
+        selectedRouteEntries().map(entry => [entry.id, String(entry.postalCode || '').trim()])]);
+    }
+
+    function moveRouteEntry(id, direction) {
+      const ids = [...selectedIds];
+      const index = ids.indexOf(id), target = index + direction;
+      if (target < 0 || target >= ids.length) return;
+      [ids[index], ids[target]] = [ids[target], ids[index]];
+      selectedIds.clear();
+      ids.forEach(value => selectedIds.add(value));
+      renderCombinedPreview();
+    }
     const example = {
       id: crypto.randomUUID(), date: '', invoice: '', destination: '', description: 'Máquina', carrier: '',
       sales: 4860, productCost: 3321, freight: 92.99, labor: '', travel: '', operations: '', commissionRate: '', otherCosts: '', otherCostItems: [], groupExpenses: [], originPostalCode: '', postalCode: '', distanceKm: '', tripCount: 1, notes: ''
@@ -1210,8 +1232,8 @@
     }
 
     function updateDistanceSummary(selected) {
-      const totalKm = selected.reduce((sum, entry) => sum + number(entry.distanceKm) * Math.max(1, Math.round(number(entry.tripCount) || 1)), 0);
-      const totalTrips = selected.reduce((sum, entry) => sum + Math.max(1, Math.round(number(entry.tripCount) || 1)), 0);
+      const totalKm = selected.reduce((sum, entry) => sum + number(entry.distanceKm), 0);
+      const totalTrips = selected.length;
       const arithmeticKm = selected.length
         ? selected.reduce((sum, entry) => sum + number(entry.distanceKm), 0) / selected.length
         : 0;
@@ -1241,11 +1263,16 @@
       input.setAttribute('aria-label', options.label || field);
       input.addEventListener('input', () => {
         entry[field] = input.value;
+        if (field === 'postalCode') {
+          calculatedDistanceKey = '';
+          document.getElementById('distanceStatus').textContent = 'Código postal alterado: volte a calcular a rota antes de repartir despesas.';
+          clearCombinedRouteMap();
+        }
         saveEntries(entry);
         updateDistanceSummary(entries.filter(item => selectedIds.has(item.id)));
         if (field === 'distanceKm' || field === 'tripCount') {
           const weight = input.closest('tr').querySelector('[data-distance-weight]');
-          weight.textContent = `${(number(entry.distanceKm) * Math.max(1, Math.round(number(entry.tripCount) || 1))).toLocaleString('pt-PT', { maximumFractionDigits: 1 })} km`;
+          weight.textContent = 'Volte a calcular a rota';
         }
       });
       return input;
@@ -1256,6 +1283,12 @@
       const originPostal = document.getElementById('combinedOriginPostalCode');
       origin.value = localStorage.getItem(ORIGIN_KEY) || 'Maia';
       originPostal.value = localStorage.getItem(ORIGIN_POSTAL_KEY) || selected.find(entry => entry.originPostalCode)?.originPostalCode || '';
+      if (calculatedDistanceKey !== distanceRouteKey()) {
+        calculatedDistanceKey = '';
+        routeDetails.clear();
+        document.getElementById('distanceStatus').textContent = 'Calcule a rota na ordem indicada para obter os km e repartir despesas.';
+      }
+      const totalRouteKm = calculatedDistanceKey ? selected.reduce((sum, entry) => sum + number(entry.distanceKm), 0) : 0;
 
       const tbody = document.getElementById('distanceRows');
       tbody.replaceChildren();
@@ -1263,21 +1296,39 @@
         if (/^\d{4}-\d{3}$/.test(String(entry.distanceKm || '').trim())) entry.distanceKm = '';
         const row = document.createElement('tr');
         row.dataset.entryId = entry.id;
-        addCombinedCell(row, entry.destination || entry.description || entry.invoice || `Destino ${index + 1}`);
+        const labelCell = document.createElement('td');
+        labelCell.append(document.createTextNode(`${index + 1}. ${combinedEntryLabel(entry, index)} `));
+        [-1, 1].forEach(direction => {
+          const button = document.createElement('button');
+          button.type = 'button';
+          button.className = 'route-order-button';
+          button.textContent = direction === -1 ? '↑' : '↓';
+          button.setAttribute('aria-label', direction === -1 ? 'Antecipar destino' : 'Adiar destino');
+          button.disabled = direction === -1 ? index === 0 : index === selected.length - 1;
+          button.addEventListener('click', () => moveRouteEntry(entry.id, direction));
+          labelCell.append(button);
+        });
+        row.append(labelCell);
 
         const postalCell = document.createElement('td');
         postalCell.appendChild(distanceInput(entry, 'postalCode', entry.postalCode, { placeholder: '0000-000', label: 'Código postal do destino', className: 'destination-postal-input' }));
         const kmCell = document.createElement('td');
-        kmCell.appendChild(distanceInput(entry, 'distanceKm', entry.distanceKm, { numeric: true, placeholder: 'Calculado automaticamente', label: 'Distância de ida e volta em quilómetros', className: 'destination-km-input' }));
+        const kmInput = distanceInput(entry, 'distanceKm', calculatedDistanceKey ? entry.distanceKm : '', { numeric: true, placeholder: 'Calcular rota', label: 'Km do troço incluindo regresso no último destino', className: 'destination-km-input' });
+        kmInput.readOnly = true;
+        kmCell.appendChild(kmInput);
         const tripsCell = document.createElement('td');
-        tripsCell.appendChild(distanceInput(entry, 'tripCount', entry.tripCount || 1, { numeric: true, placeholder: '1', label: 'Número de deslocações', className: 'destination-trips-input' }));
+        const detail = routeDetails.get(entry.id);
+        const from = index === 0 ? origin.value : (selected[index - 1].destination || selected[index - 1].postalCode);
+        tripsCell.textContent = `${from} → ${entry.destination || entry.postalCode || 'destino'}`;
+        if (detail) tripsCell.textContent += `: ${detail.inboundKm.toLocaleString('pt-PT')} km`;
+        if (index === selected.length - 1) tripsCell.textContent += detail ? ` + regresso: ${detail.returnKm.toLocaleString('pt-PT')} km` : ' + regresso à origem';
         const weightCell = document.createElement('td');
         weightCell.dataset.distanceWeight = 'true';
-        weightCell.textContent = `${(number(entry.distanceKm) * Math.max(1, Math.round(number(entry.tripCount) || 1))).toLocaleString('pt-PT', { maximumFractionDigits: 1 })} km`;
+        weightCell.textContent = totalRouteKm ? percent.format(number(entry.distanceKm) / totalRouteKm) : '—';
         row.append(postalCell, kmCell, tripsCell, weightCell);
         tbody.appendChild(row);
       });
-      updateDistanceSummary(selected);
+      updateDistanceSummary(calculatedDistanceKey ? selected : []);
       const nextRouteKey = selected.map(entry => `${entry.id}:${entry.postalCode || ''}`).join('|');
       if (combinedRouteKey && combinedRouteKey !== nextRouteKey) clearCombinedRouteMap();
     }
@@ -1287,9 +1338,6 @@
         const entry = entries.find(item => item.id === row.dataset.entryId);
         if (!entry) return;
         entry.postalCode = row.querySelector('.destination-postal-input')?.value.trim() || '';
-        const kmText = row.querySelector('.destination-km-input')?.value.trim() || '';
-        entry.distanceKm = /^\d{4}-\d{3}$/.test(kmText) ? '' : kmText;
-        entry.tripCount = row.querySelector('.destination-trips-input')?.value || 1;
         saveEntries(entry);
       });
     }
@@ -1331,15 +1379,6 @@
       const point = { lat: Number(results[0].lat), lon: Number(results[0].lon) };
       geocodeCache.set(normalized, point);
       return point;
-    }
-
-    async function routeRoundTripKm(origin, destination) {
-      const coordinates = `${origin.lon},${origin.lat};${destination.lon},${destination.lat}`;
-      const response = await fetch(`https://router.project-osrm.org/route/v1/driving/${coordinates}?overview=false&alternatives=false&steps=false`);
-      if (!response.ok) throw new Error('O serviço de rotas não respondeu.');
-      const result = await response.json();
-      if (result.code !== 'Ok' || !result.routes?.length) throw new Error('Não foi encontrada uma rota rodoviária.');
-      return Math.round(result.routes[0].distance * 2 / 100) / 10;
     }
 
     function clearCombinedRouteMap(message = 'Calcule pelos códigos postais para desenhar a rota.') {
@@ -1414,12 +1453,25 @@
       return {
         geometry: result.routes[0].geometry,
         distanceKm: Math.round(result.routes[0].distance / 100) / 10,
+        legs: result.routes[0].legs,
       };
+    }
+
+    function routeLegAllocations(legs, count) {
+      if (count < 1 || !Array.isArray(legs) || legs.length !== count + 1 ||
+          legs.some(leg => !Number.isFinite(leg.distance) || leg.distance < 0)) {
+        throw new Error('Não foi possível obter todos os troços e o regresso.');
+      }
+      return Array.from({ length: count }, (_, index) => {
+        const inboundKm = Math.round(legs[index].distance / 100) / 10;
+        const returnKm = index === count - 1 ? Math.round(legs[count].distance / 100) / 10 : 0;
+        return { inboundKm, returnKm, totalKm: Math.round((inboundKm + returnKm) * 10) / 10 };
+      });
     }
 
     async function calculatePostalDistances() {
       syncDistanceRowsFromUi();
-      const selected = entries.filter(entry => selectedIds.has(entry.id));
+      const selected = selectedRouteEntries();
       const originPostal = document.getElementById('combinedOriginPostalCode').value.trim();
       const originName = document.getElementById('combinedOrigin').value.trim() || 'Maia';
       const status = document.getElementById('distanceStatus');
@@ -1442,6 +1494,7 @@
       button.disabled = true;
       localStorage.setItem(ORIGIN_KEY, originName);
       localStorage.setItem(ORIGIN_POSTAL_KEY, originPostal);
+      const requestKey = distanceRouteKey();
       try {
         status.textContent = 'A localizar a origem…';
         const originPoint = await geocodePostalCode(originPostal);
@@ -1453,20 +1506,33 @@
           const destinationPoint = await geocodePostalCode(entry.postalCode);
           destinationPoints.push(destinationPoint);
           routeLabels.push(entry.destination || entry.description || entry.postalCode);
-          entry.originPostalCode = originPostal;
-          entry.distanceKm = await routeRoundTripKm(originPoint, destinationPoint);
-          saveEntries(entry);
         }
-        renderCombinedPreview();
-        status.textContent = 'A desenhar a rota conjunta no mapa…';
+        status.textContent = 'A calcular os troços e o regresso à origem…';
         const routePoints = [originPoint, ...destinationPoints, originPoint];
         const combinedRoute = await calculateCombinedRoute(routePoints);
+        if (requestKey !== distanceRouteKey()) throw new Error('A rota foi alterada durante o cálculo. Volte a calcular.');
+        const allocations = routeLegAllocations(combinedRoute.legs, selected.length);
+        allocations.forEach((part, index) => {
+          const entry = selected[index];
+          entry.originPostalCode = originPostal;
+          entry.distanceKm = part.totalKm;
+          entry.tripCount = 1;
+          routeDetails.set(entry.id, part);
+          saveEntries(entry);
+        });
+        calculatedDistanceKey = requestKey;
+        renderCombinedPreview();
         const routeKey = selected.map(entry => `${entry.id}:${entry.postalCode || ''}`).join('|');
-        renderCombinedRouteMap(routePoints, routeLabels, combinedRoute.geometry, combinedRoute.distanceKm, routeKey);
-        status.textContent = 'Distâncias e mapa da rota calculados. Pode corrigir os quilómetros manualmente.';
+        try {
+          renderCombinedRouteMap(routePoints, routeLabels, combinedRoute.geometry, allocations.reduce((sum, part) => sum + part.totalKm, 0), routeKey);
+          status.textContent = 'Rota calculada. O último destino inclui o regresso. Pode aplicar as despesas pelos km.';
+        } catch (mapError) {
+          status.textContent = 'Quilómetros calculados; mapa indisponível. Pode aplicar as despesas pelos km.';
+        }
       } catch (error) {
         console.error(error);
-        status.textContent = `${error.message} Pode preencher os quilómetros manualmente.`;
+        calculatedDistanceKey = '';
+        status.textContent = `${error.message} Não aplique despesas pelos km até concluir o cálculo.`;
       } finally {
         button.disabled = false;
       }
@@ -1507,7 +1573,7 @@
     }
 
     function addGroupCostRow(description = 'Retoma', value = '', target = '', category = 'other') {
-      const selected = entries.filter(entry => selectedIds.has(entry.id));
+      const selected = selectedRouteEntries();
       const row = document.createElement('div');
       row.className = 'group-cost-row';
 
@@ -1585,21 +1651,22 @@
 
     function allocateGroupCostCents(totalCents, selected, mode) {
       const rawWeights = mode === 'distance'
-        ? selected.map(entry => Math.max(0, number(entry.distanceKm) * Math.max(1, Math.round(number(entry.tripCount) || 1))))
+        ? selected.map(entry => Math.max(0, number(entry.distanceKm)))
         : mode === 'proportional'
           ? selected.map(entry => Math.max(0, number(entry.sales)))
           : selected.map(() => 1);
       const weightTotal = rawWeights.reduce((sum, weight) => sum + weight, 0);
       const weights = weightTotal > 0 ? rawWeights : selected.map(() => 1);
       const denominator = weights.reduce((sum, weight) => sum + weight, 0);
-      let used = 0;
-      return selected.map((entry, index) => {
-        const cents = index === selected.length - 1
-          ? totalCents - used
-          : Math.floor(totalCents * weights[index] / denominator);
-        used += cents;
-        return { entry, cents };
+      if (mode === 'distance' && weightTotal <= 0) throw new Error('A rota não tem quilómetros para repartir.');
+      const parts = selected.map((entry, index) => {
+        const exact = totalCents * weights[index] / denominator;
+        return { entry, cents: Math.floor(exact), remainder: exact - Math.floor(exact) };
       });
+      const remaining = totalCents - parts.reduce((sum, part) => sum + part.cents, 0);
+      [...parts].sort((a, b) => b.remainder - a.remainder).slice(0, remaining)
+        .forEach(part => part.cents++);
+      return parts.map(({ entry, cents }) => ({ entry, cents }));
     }
 
     function appendAllocatedExpense(entry, description, category, cents, expenseId, allocation) {
@@ -1617,7 +1684,8 @@
     }
 
     function applyGroupCosts() {
-      const selected = entries.filter(entry => selectedIds.has(entry.id));
+      syncDistanceRowsFromUi();
+      const selected = selectedRouteEntries();
       const drafts = readGroupCostDrafts();
       const status = document.getElementById('groupCostStatus');
       if (!selected.length) {
@@ -1628,8 +1696,8 @@
         status.textContent = 'Indique a descrição e o valor de pelo menos uma despesa.';
         return;
       }
-      if (drafts.some(draft => draft.target === 'distance') && selected.some(entry => number(entry.distanceKm) <= 0)) {
-        status.textContent = 'Calcule primeiro os quilómetros de todos os destinos para repartir estas despesas.';
+      if (drafts.some(draft => draft.target === 'distance') && (!calculatedDistanceKey || calculatedDistanceKey !== distanceRouteKey() || selected.reduce((sum, entry) => sum + number(entry.distanceKm), 0) <= 0)) {
+        status.textContent = 'Calcule primeiro a rota atual, com todos os destinos e o regresso, para repartir estas despesas.';
         return;
       }
 
@@ -1642,7 +1710,7 @@
           return;
         }
         const allocation = draft.target === 'distance'
-          ? 'Repartido proporcionalmente pelos km de cada destino'
+          ? 'Repartido pelos troços da rota; regresso incluído no último destino'
           : draft.target === 'proportional'
             ? 'Repartido pelo PV das faturas'
             : 'Repartido igualmente pelo grupo';
@@ -1683,8 +1751,10 @@
             category: item.category || 'other',
             allocation: item.groupExpenseAllocation || 'Fatura/envio',
             value: 0,
+            portions: [],
           };
           current.value += number(item.value);
+          current.portions.push(`${combinedEntryLabel(entry)}: ${money.format(number(item.value))}`);
           grouped.set(item.groupExpenseId, current);
         });
       });
@@ -1700,7 +1770,7 @@
         const line = document.createElement('div');
         line.className = 'combined-expense-line';
         const text = document.createElement('span');
-        text.textContent = `${item.label} · ${groupExpenseCategoryLabel(item.category)}: ${money.format(item.value)} → ${item.allocation}`;
+        text.textContent = `${item.label} · ${groupExpenseCategoryLabel(item.category)}: ${money.format(item.value)} → ${item.allocation}. ${item.portions.join(' | ')}`;
         const remove = document.createElement('button');
         remove.type = 'button';
         remove.textContent = 'Retirar';
@@ -1711,7 +1781,7 @@
     }
 
     function renderCombinedPreview() {
-      const selected = entries.filter(entry => selectedIds.has(entry.id));
+      const selected = selectedRouteEntries();
 
       const tbody = document.getElementById('combinedRows');
       tbody.replaceChildren();
@@ -1866,7 +1936,12 @@
     });
     document.getElementById('applyGroupCosts').addEventListener('click', applyGroupCosts);
     document.getElementById('combinedOrigin').addEventListener('input', event => localStorage.setItem(ORIGIN_KEY, event.target.value));
-    document.getElementById('combinedOriginPostalCode').addEventListener('input', event => localStorage.setItem(ORIGIN_POSTAL_KEY, event.target.value));
+    document.getElementById('combinedOriginPostalCode').addEventListener('input', event => {
+      localStorage.setItem(ORIGIN_POSTAL_KEY, event.target.value);
+      calculatedDistanceKey = '';
+      clearCombinedRouteMap();
+      renderDistanceWeighting(selectedRouteEntries());
+    });
     document.getElementById('calculatePostalDistances').addEventListener('click', calculatePostalDistances);
     document.getElementById('exportCsv').addEventListener('click', exportCsv);
 
