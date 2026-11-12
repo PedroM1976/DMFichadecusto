@@ -646,7 +646,7 @@
       </div>
       <p id="routeModeSummary" class="distance-attribution"></p>
       <table class="distance-table">
-        <thead><tr><th>Ordem / fatura / destino</th><th>Código postal</th><th>Troço de chegada</th><th>Km do troço</th><th>Quota do regresso (km)</th><th>Km para repartição</th><th id="routeWeightHeading">Peso: troço + regresso = total</th></tr></thead>
+        <thead><tr><th>Ordem / fatura / destino</th><th>Código postal</th><th>Troço de chegada</th><th>Km do troço</th><th>Quota do regresso (% e km)</th><th>Km para repartição</th><th id="routeWeightHeading">Peso na despesa total</th></tr></thead>
         <tbody id="distanceRows"></tbody>
       </table>
       <div class="distance-summary">
@@ -1312,7 +1312,7 @@
         : '—');
       const detail = selected.length ? routeDetails.get(selected[0].id) : null;
       setPrintText('returnAllocationSummary', detail
-        ? `Regresso do último destino à origem: ${detail.returnTotalKm.toLocaleString('pt-PT', { maximumFractionDigits: 2 })} km ÷ ${selected.length} destinos = ${detail.returnKm.toLocaleString('pt-PT', { maximumFractionDigits: 2 })} km por venda. Percentagens calculadas sem arredondamentos intermédios.`
+        ? `Regresso: 100% ÷ ${selected.length} destinos = ${(100 / selected.length).toLocaleString('pt-PT', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}% do regresso por destino. ${detail.returnTotalKm.toLocaleString('pt-PT', { maximumFractionDigits: 2 })} km ÷ ${selected.length} = ${detail.returnKm.toLocaleString('pt-PT', { maximumFractionDigits: 2 })} km por destino. Esta quota é igual para todos; o peso na despesa total inclui também o troço de chegada. Cálculo sem arredondamentos intermédios.`
         : 'O regresso será repartido igualmente por todos os destinos após calcular a rota.');
     }
 
@@ -1361,7 +1361,7 @@
       const includeReturn = routeExpenseMode() === 'return';
       const weights = currentRouteWeights(selected);
       const totalRouteKm = weights.reduce((sum, km) => sum + km, 0);
-      setPrintText('routeWeightHeading', includeReturn ? 'Peso: troço + regresso = total' : 'Peso: só troço');
+      setPrintText('routeWeightHeading', includeReturn ? 'Peso na despesa total (troço + quota do regresso)' : 'Peso na despesa total (só troço)');
       setPrintText('routeModeSummary', `Simulação: ${routeAllocationLabel()}. Base de repartição: ${totalRouteKm.toLocaleString('pt-PT', { maximumFractionDigits: 2 })} km. As margens acima correspondem às despesas já aplicadas.`);
 
       const tbody = document.getElementById('distanceRows');
@@ -1393,13 +1393,13 @@
         tripsCell.textContent = `${from} → ${entry.destination || entry.postalCode || 'destino'}`;
         kmCell.textContent = detail ? detail.inboundKm.toLocaleString('pt-PT', { maximumFractionDigits: 2 }) : '—';
         const returnCell = document.createElement('td');
-        returnCell.textContent = detail ? (includeReturn ? detail.returnKm.toLocaleString('pt-PT', { maximumFractionDigits: 2 }) : 'Não incluída') : '—';
+        returnCell.textContent = detail ? (includeReturn ? `${(100 / selected.length).toLocaleString('pt-PT', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}% do regresso · ${detail.returnKm.toLocaleString('pt-PT', { maximumFractionDigits: 2 })} km` : 'Não incluída') : '—';
         const allocatedCell = document.createElement('td');
         allocatedCell.textContent = detail ? weights[index].toLocaleString('pt-PT', { maximumFractionDigits: 2 }) : '—';
         const weightCell = document.createElement('td');
         weightCell.dataset.distanceWeight = 'true';
         weightCell.textContent = totalRouteKm && detail
-          ? (includeReturn ? `${percent.format(detail.inboundKm / totalRouteKm)} + ${percent.format(detail.returnKm / totalRouteKm)} = ${percent.format(weights[index] / totalRouteKm)}` : percent.format(weights[index] / totalRouteKm))
+          ? percent.format(weights[index] / totalRouteKm)
           : '—';
         row.append(postalCell, tripsCell, kmCell, returnCell, allocatedCell, weightCell);
         tbody.appendChild(row);
